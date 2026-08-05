@@ -116,6 +116,8 @@ export function createNativeChatPtySessionOptions(
       resolveEffectiveNativeChatModelId(catalog, activeModels(), record)
     )
 
+  // Same load-bearing guard as the apply path: a truthy `modelId` implies a tracked
+  // model for every agent without a CLI default, keeping the ungated flag false there.
   const persist = (modelId: string | null, optionId: string, value: SessionOptionValue): void => {
     if (modelId) {
       void args.persistSelection?.({

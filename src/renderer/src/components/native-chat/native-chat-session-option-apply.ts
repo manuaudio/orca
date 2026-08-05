@@ -93,6 +93,9 @@ function persist(
   optionId: string,
   value: SessionOptionValue
 ): void {
+  // The guard below is load-bearing, not just a null check: without a CLI default a
+  // truthy `modelId` implies a tracked model, which is what keeps the ungated flag
+  // false for every other agent. Widening it would change their persistence too.
   if (modelId) {
     void ctx.persistSelection?.({
       modelId,
