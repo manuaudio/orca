@@ -40,6 +40,12 @@ describe('hasFlag', () => {
     expect(hasFlag(['--debug', '--yolo', '--model', 'grok-build'], MODEL_FLAGS)).toBe(true)
   })
 
+  it('stops scanning at the option terminator', () => {
+    expect(hasFlag(['--', '--model'], MODEL_FLAGS)).toBe(false)
+    expect(hasFlag(['--', '-mgrok-build'], MODEL_FLAGS)).toBe(false)
+    expect(hasFlag(['--model', 'grok-build', '--', '--model'], MODEL_FLAGS)).toBe(true)
+  })
+
   it('detects either spelling of grok effort flags', () => {
     const effortFlags = ['--effort', '--reasoning-effort']
     expect(hasFlag(['--effort', 'low'], effortFlags)).toBe(true)

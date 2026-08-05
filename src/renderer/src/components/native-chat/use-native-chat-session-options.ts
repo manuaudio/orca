@@ -209,6 +209,12 @@ export function useNativeChatSessionOptions(args: {
         void retirePersistedModelMissingFromDiscovery(agent, models).catch(() => undefined)
       }
     )
+    // Why: the subscription never replays, so a probe that settled before this
+    // pane mounted would leave a retired persisted model in place forever.
+    const cached = readNativeChatEnrichedModels(agent, discoveryContext.hostKey)
+    if (cached) {
+      void retirePersistedModelMissingFromDiscovery(agent, cached).catch(() => undefined)
+    }
     ensureNativeChatModelEnrichment({
       agent,
       hostKey: discoveryContext.hostKey,

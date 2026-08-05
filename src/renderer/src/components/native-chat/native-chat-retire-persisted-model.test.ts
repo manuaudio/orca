@@ -1,17 +1,36 @@
+// @vitest-environment happy-dom
+
+import { renderHook } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { CatalogModel } from '../../../../shared/agent-session-option-catalog'
 import type { PersistedNativeChatSessionOptions } from '../../../../shared/native-chat-session-options'
+import {
+  clearNativeChatModelEnrichmentForTests,
+  ensureNativeChatModelEnrichment,
+  readNativeChatEnrichedModels
+} from './native-chat-session-option-enrichment'
 
 const mocks = vi.hoisted(() => ({
   storeState: {
     settings: {} as { nativeChatSessionOptions?: PersistedNativeChatSessionOptions },
     updateSettings: vi.fn()
-  }
+  },
+  createNativeChatPtySessionOptions: vi.fn(),
+  discoverNativeChatCatalogModels: vi.fn()
 }))
 
 vi.mock('../../store', () => ({ useAppStore: { getState: () => mocks.storeState } }))
 
-const { retirePersistedModelMissingFromDiscovery } =
+vi.mock('./native-chat-pty-session-options', () => ({
+  createNativeChatPtySessionOptions: mocks.createNativeChatPtySessionOptions
+}))
+
+vi.mock('./native-chat-session-option-discovery', () => ({
+  resolveNativeChatModelDiscoveryContext: () => ({ hostKey: 'local', runtime: {} }),
+  discoverNativeChatCatalogModels: mocks.discoverNativeChatCatalogModels
+}))
+
+const { retirePersistedModelMissingFromDiscovery, useNativeChatSessionOptions } =
   await import('./use-native-chat-session-options')
 
 const models = (...ids: string[]): CatalogModel[] =>
@@ -80,5 +99,64 @@ describe('retirePersistedModelMissingFromDiscovery', () => {
     expect(mocks.storeState.updateSettings).toHaveBeenCalledWith({
       nativeChatSessionOptions: { grok: {}, claude: { model: 'opus' } }
     })
+  })
+})
+
+/** The enrichment subscription never replays, so a pane that mounts after the
+ *  once-per-host probe settled would otherwise never reach retirement. */
+describe('useNativeChatSessionOptions retirement on mount', () => {
+  const mountPane = (): void => {
+    renderHook(() =>
+      useNativeChatSessionOptions({
+        agent: 'grok',
+        terminalTabId: 'tab-1',
+        targetPtyId: 'pty-1',
+        dispatchCommand: () => undefined
+      })
+    )
+  }
+
+  beforeEach(() => {
+    clearNativeChatModelEnrichmentForTests()
+    mocks.storeState.updateSettings.mockReset().mockResolvedValue(undefined)
+    mocks.storeState.settings = {}
+    mocks.discoverNativeChatCatalogModels.mockReset().mockResolvedValue(null)
+    // A stable snapshot reference: useSyncExternalStore re-renders forever otherwise.
+    const emptySnapshot: never[] = []
+    mocks.createNativeChatPtySessionOptions.mockReset().mockImplementation(() => ({
+      subscribe: () => () => {},
+      getSnapshot: () => emptySnapshot,
+      recordOutgoingCommand: () => {},
+      reportSessionOptions: () => {},
+      replaceModels: () => {}
+    }))
+  })
+
+  it('retires a persisted id against models the probe already cached', async () => {
+    persist({ grok: { model: 'grok-build' } })
+    ensureNativeChatModelEnrichment({
+      agent: 'grok',
+      hostKey: 'local',
+      discover: async () => models('grok-4.5')
+    })
+    await vi.waitFor(() => expect(readNativeChatEnrichedModels('grok', 'local')).not.toBeNull())
+
+    mountPane()
+
+    await vi.waitFor(() =>
+      expect(mocks.storeState.updateSettings).toHaveBeenCalledWith({
+        nativeChatSessionOptions: { grok: {} }
+      })
+    )
+  })
+
+  it('leaves the persisted id alone while the probe is still in flight', async () => {
+    persist({ grok: { model: 'grok-build' } })
+    mocks.discoverNativeChatCatalogModels.mockReturnValue(new Promise(() => {}))
+
+    mountPane()
+
+    await Promise.resolve()
+    expect(mocks.storeState.updateSettings).not.toHaveBeenCalled()
   })
 })
