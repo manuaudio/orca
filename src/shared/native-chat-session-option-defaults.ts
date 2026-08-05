@@ -28,12 +28,30 @@ export function resolveNativeChatSessionOptionDefaults(
   return values
 }
 
+/** Why: an authoritative probe proved this id gone, and a stale `model` is emitted
+ *  verbatim as a launch flag — grok exits fatally on an unknown one. Dropping only
+ *  `model` keeps the per-model option values for a later reselect. */
+export function clearNativeChatSessionOptionModel(
+  persisted: PersistedNativeChatSessionOptions | null | undefined,
+  agent: AgentType
+): PersistedNativeChatSessionOptions {
+  const currentAgent = persisted?.[agent]
+  if (!currentAgent?.model) {
+    return { ...persisted }
+  }
+  const { model: _dropped, ...rest } = currentAgent
+  return { ...persisted, [agent]: rest }
+}
+
 export function updateNativeChatSessionOptionDefaults(args: {
   persisted: PersistedNativeChatSessionOptions | null | undefined
   agent: AgentType
   modelId: string
   optionId: string
   value: SessionOptionValue
+  /** The model only scopes this value; the user never picked it. Adopting it would
+   *  emit `-m` on every later launch — see the invariant above. */
+  modelIsCliDefault?: boolean
 }): PersistedNativeChatSessionOptions {
   const currentAgent = args.persisted?.[args.agent]
   const currentModelValues = currentAgent?.valuesByModel?.[args.modelId] ?? {}
@@ -49,7 +67,9 @@ export function updateNativeChatSessionOptionDefaults(args: {
     ...args.persisted,
     [args.agent]: {
       ...currentAgent,
-      model: args.optionId === 'model' ? String(args.value) : args.modelId,
+      ...(args.modelIsCliDefault
+        ? {}
+        : { model: args.optionId === 'model' ? String(args.value) : args.modelId }),
       valuesByModel
     }
   }

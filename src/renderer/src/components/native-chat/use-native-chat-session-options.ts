@@ -1,6 +1,13 @@
 import { useEffect, useMemo, useRef, useSyncExternalStore } from 'react'
 import type { AgentType } from '../../../../shared/agent-status-types'
-import { updateNativeChatSessionOptionDefaults } from '../../../../shared/native-chat-session-option-defaults'
+import {
+  getAgentSessionOptionCatalog,
+  type CatalogModel
+} from '../../../../shared/agent-session-option-catalog'
+import {
+  clearNativeChatSessionOptionModel,
+  updateNativeChatSessionOptionDefaults
+} from '../../../../shared/native-chat-session-option-defaults'
 import type { SessionOptionDescriptor } from '../../../../shared/native-chat-session-options'
 import { useAppStore } from '../../store'
 import {
@@ -22,6 +29,33 @@ import { readClaudeSessionOptionsFromTerminalScreen } from './claude-terminal-se
 const EMPTY_SNAPSHOT: SessionOptionDescriptor[] = []
 const subscribeEmpty = (): (() => void) => () => {}
 const getEmptySnapshot = (): SessionOptionDescriptor[] => EMPTY_SNAPSHOT
+
+/**
+ * Why: the picker drops a retired model, but the persisted default is what launches
+ * become `-m <id>` — every launch site reads it, including the ones that never show
+ * the picker. Left alone the id is invisible and still fatal, so an authoritative
+ * probe that no longer lists it must retire it here too.
+ */
+export async function retirePersistedModelMissingFromDiscovery(
+  agent: AgentType,
+  models: readonly CatalogModel[]
+): Promise<void> {
+  if (!getAgentSessionOptionCatalog(agent)?.discoveredModelsAreAuthoritative) {
+    return
+  }
+  // An empty list means the probe failed, not that the account has no models.
+  if (models.length === 0) {
+    return
+  }
+  const persisted = useAppStore.getState().settings?.nativeChatSessionOptions
+  const modelId = persisted?.[agent]?.model
+  if (typeof modelId !== 'string' || !modelId || models.some((model) => model.id === modelId)) {
+    return
+  }
+  await useAppStore.getState().updateSettings({
+    nativeChatSessionOptions: clearNativeChatSessionOptionModel(persisted, agent)
+  })
+}
 
 export function useNativeChatSessionOptions(args: {
   agent: AgentType
@@ -73,7 +107,7 @@ export function useNativeChatSessionOptions(args: {
       reportedValues,
       dispatchCommand,
       onAgentPicker,
-      persistSelection: async ({ modelId, optionId, value }) => {
+      persistSelection: async ({ modelId, optionId, value, modelIsCliDefault }) => {
         // Why: read the live persisted defaults at write time (after any prior
         // write in this chain settles) and merge only this selection onto them,
         // rather than a baseline captured once at surface creation. A frozen
@@ -89,7 +123,8 @@ export function useNativeChatSessionOptions(args: {
               agent,
               modelId,
               optionId,
-              value
+              value,
+              modelIsCliDefault
             })
             return useAppStore.getState().updateSettings({ nativeChatSessionOptions: next })
           })
@@ -170,6 +205,8 @@ export function useNativeChatSessionOptions(args: {
         if (reportedValues) {
           surface.reportSessionOptions(reportedValues)
         }
+        // A failed settings write must not surface as an unhandled rejection.
+        void retirePersistedModelMissingFromDiscovery(agent, models).catch(() => undefined)
       }
     )
     ensureNativeChatModelEnrichment({

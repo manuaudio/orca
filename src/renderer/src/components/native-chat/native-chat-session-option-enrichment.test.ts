@@ -159,6 +159,120 @@ describe('native chat session option enrichment', () => {
     expect(readNativeChatEnrichedModels('claude', 'local')).toBeNull()
   })
 
+  it('carries grok’s probed default through discovery to the published rows', async () => {
+    mocks.discoverRuntimeCommitMessageModels.mockResolvedValue({
+      success: true,
+      catalogOrigin: 'probe',
+      models: [
+        { id: 'grok-build', label: 'Grok Build' },
+        { id: 'grok-5', label: 'Grok 5', isDefault: true }
+      ]
+    })
+    const discover = vi.fn(() =>
+      discoverNativeChatCatalogModels('grok', {
+        settings: {},
+        worktreeId: 'repo::/worktree',
+        worktreePath: '/worktree'
+      })
+    )
+    const listener = vi.fn()
+    subscribeNativeChatEnrichedModels('grok', 'ssh:host', listener)
+
+    ensureNativeChatModelEnrichment({ agent: 'grok', hostKey: 'ssh:host', discover })
+    await vi.waitFor(() => expect(listener).toHaveBeenCalledOnce())
+
+    const models = readNativeChatEnrichedModels('grok', 'ssh:host')!
+    // The seed's grok-4.5 is gone (discovery is authoritative) and its default flag
+    // did not survive onto a row the account no longer calls default.
+    expect(models.map(({ id, isDefault }) => [id, isDefault])).toEqual([
+      ['grok-build', undefined],
+      ['grok-5', true]
+    ])
+    // Effort is a global grok flag, so both unseeded rows still get the menu.
+    expect(models.map((model) => model.options.map(({ id }) => id))).toEqual([
+      ['effort'],
+      ['effort']
+    ])
+  })
+
+  it('publishes no default when an older host omits the flag entirely', async () => {
+    // A remote Orca predating `isDefault` sends rows without it; the picker must
+    // name no model rather than fall back to a seed row the account may have retired.
+    mocks.discoverRuntimeCommitMessageModels.mockResolvedValue({
+      success: true,
+      catalogOrigin: 'probe',
+      models: [{ id: 'grok-4.5', label: 'Grok 4.5' }]
+    })
+    const discover = vi.fn(() =>
+      discoverNativeChatCatalogModels('grok', {
+        settings: {},
+        worktreeId: 'repo::/worktree',
+        worktreePath: '/worktree'
+      })
+    )
+    const listener = vi.fn()
+    subscribeNativeChatEnrichedModels('grok', 'ssh:legacy', listener)
+
+    ensureNativeChatModelEnrichment({ agent: 'grok', hostKey: 'ssh:legacy', discover })
+    await vi.waitFor(() => expect(listener).toHaveBeenCalledOnce())
+
+    const published = readNativeChatEnrichedModels('grok', 'ssh:legacy')!
+    expect(published.map(({ id }) => id)).toEqual(['grok-4.5'])
+    expect(published[0]!.isDefault).toBeUndefined()
+  })
+
+  it('rejects a spec fallback for grok too, not just claude', async () => {
+    // Grok's list replaces the seed rather than extending it, so letting a static
+    // fallback through would retire real models and blank the picker.
+    mocks.discoverRuntimeCommitMessageModels.mockResolvedValue({
+      success: true,
+      catalogOrigin: 'spec',
+      models: [{ id: 'grok-4.5', label: 'Grok 4.5' }]
+    })
+
+    await expect(
+      discoverNativeChatCatalogModels('grok', {
+        settings: {},
+        worktreeId: 'repo::/worktree',
+        worktreePath: '/worktree'
+      })
+    ).resolves.toBeNull()
+  })
+
+  it('still lets a spec fallback through for an additive agent', async () => {
+    // Cursor merges onto its seed, so a fallback list costs nothing and dropping it
+    // would be a regression — the probe guard must stay scoped to authoritative agents.
+    mocks.discoverRuntimeCommitMessageModels.mockResolvedValue({
+      success: true,
+      catalogOrigin: 'spec',
+      models: [{ id: 'auto', label: 'Auto' }]
+    })
+
+    await expect(
+      discoverNativeChatCatalogModels('cursor', {
+        settings: {},
+        worktreeId: 'repo::/worktree',
+        worktreePath: '/worktree'
+      })
+    ).resolves.toEqual([{ id: 'auto', label: 'Auto', options: [] }])
+  })
+
+  it('uses the authoritative merge for grok and the additive one for cursor', async () => {
+    // Both branches of the same ternary: deleting the authoritative arm typechecks
+    // and leaves every additive-agent test passing.
+    const discoverGrok = vi.fn().mockResolvedValue([{ id: 'grok-5', label: 'Grok 5', options: [] }])
+    const discoverCursor = vi.fn().mockResolvedValue([{ id: 'extra', label: 'Extra', options: [] }])
+    ensureNativeChatModelEnrichment({ agent: 'grok', hostKey: 'm', discover: discoverGrok })
+    ensureNativeChatModelEnrichment({ agent: 'cursor', hostKey: 'm', discover: discoverCursor })
+    await vi.waitFor(() => {
+      expect(readNativeChatEnrichedModels('grok', 'm')).not.toBeNull()
+      expect(readNativeChatEnrichedModels('cursor', 'm')).not.toBeNull()
+    })
+
+    expect(readNativeChatEnrichedModels('grok', 'm')!.map(({ id }) => id)).toEqual(['grok-5'])
+    expect(readNativeChatEnrichedModels('cursor', 'm')!.map(({ id }) => id)).toContain('auto')
+  })
+
   it('does not advertise the Claude spec fallback when probing is unavailable', async () => {
     mocks.discoverRuntimeCommitMessageModels.mockResolvedValue({
       success: true,

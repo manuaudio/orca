@@ -22,6 +22,7 @@ import {
 import { createSessionOptionAppliers } from './native-chat-session-option-apply'
 import {
   buildNativeChatSessionOptionSnapshot,
+  resolveEffectiveNativeChatModelId,
   withTrackedNativeChatModel,
   type NativeChatSessionOptionMode
 } from './native-chat-session-option-snapshot'
@@ -31,6 +32,8 @@ type PersistSelection = (args: {
   modelId: string
   optionId: string
   value: SessionOptionValue
+  /** The model only scopes this value; it must not become a persisted launch flag. */
+  modelIsCliDefault?: boolean
 }) => Promise<void> | void
 
 export type NativeChatPtySessionOptionsSurface = SessionOptionsSurface & {
@@ -97,15 +100,30 @@ export function createNativeChatPtySessionOptions(
     clearNativeChatSessionModel(record)
   }
 
+  /** Resolved at commit, not pre-dispatch: with nothing tracked the pre-dispatch id was
+   *  only the seed's guess at grok's default, and a probe landing mid-dispatch replaces
+   *  it with the id the CLI actually reported — the model the command truly reached. */
   const setTrackedValue = (
     optionId: string,
     value: SessionOptionValue,
     source: 'applied' | 'dispatched'
-  ): string | null => setTrackedSessionOption(record, optionId, value, source)
+  ): string | null =>
+    setTrackedSessionOption(
+      record,
+      optionId,
+      value,
+      source,
+      resolveEffectiveNativeChatModelId(catalog, activeModels(), record)
+    )
 
   const persist = (modelId: string | null, optionId: string, value: SessionOptionValue): void => {
     if (modelId) {
-      void args.persistSelection?.({ modelId, optionId, value })
+      void args.persistSelection?.({
+        modelId,
+        optionId,
+        value,
+        modelIsCliDefault: record.model === undefined
+      })
     }
   }
 

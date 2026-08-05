@@ -60,6 +60,26 @@ export type AgentSessionOptionCatalog = {
   /** Launch-safe options for opaque model ids that are absent from the static catalog. */
   unknownModelOptions?: CatalogOption[]
   composeModelValue?: (modelId: string, values: Record<string, SessionOptionValue>) => string
+  /** Why: a seeded id the CLI has retired is a fatal launch, so a successful probe
+   * must be able to drop it rather than only add. Membership only — option menus
+   * still come from the seed. */
+  discoveredModelsAreAuthoritative?: true
+  /** Set only when the `isDefault` model is provably what the CLI runs with no model
+   * flag, so an untouched draft may show it as selected. Off means `isDefault` stays
+   * decorative: agents whose default comes from account or user config would otherwise
+   * present a guess as the launch's model.
+   *
+   * Known gap: "no model flag" is unverified. A user `-m` in `agentArgs` launches that
+   * model while the picker, which never reads launch args, still names the CLI default.
+   * Harmless today — `modelIsCliDefault` keeps it out of persisted launch flags — but a
+   * real fix means threading `modelApply.agentArgsOverride` through to the surface.
+   *
+   * Known gap: options set under this default are honored in-session but reach no later
+   * launch. They persist under the model's id while `model` stays unset — deliberately,
+   * since setting it would emit `-m` — and both `resolveNativeChatSessionOptionDefaults`
+   * and `resolveAgentSessionOptionLaunch` bail without it. Closing this means teaching
+   * both to resolve options from the default model while still refusing to emit `-m`. */
+  defaultModelIsCliDefault?: true
   listModels?: {
     command: string
     parse: (stdout: string) => CatalogModel[]
