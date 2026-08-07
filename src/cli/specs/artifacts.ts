@@ -30,8 +30,8 @@ export const ARTIFACT_COMMAND_SPECS: CommandSpec[] = [
   {
     path: ['artifacts', 'list'],
     summary: 'List artifacts owned by the signed-in Orca account',
-    usage: 'orca artifacts list [--api-url <url>] [--json]',
-    allowedFlags: [...GLOBAL_FLAGS, ...CLOUD_FLAGS]
+    usage: 'orca artifacts list [--cursor <cursor>] [--api-url <url>] [--json]',
+    allowedFlags: [...GLOBAL_FLAGS, ...CLOUD_FLAGS, 'cursor']
   },
   {
     path: ['artifacts', 'delete'],

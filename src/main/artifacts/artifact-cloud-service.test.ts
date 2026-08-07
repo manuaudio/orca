@@ -3,7 +3,10 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-vi.mock('electron', () => ({ app: { isPackaged: false } }))
+vi.mock('electron', () => ({
+  app: { isPackaged: false },
+  safeStorage: { isEncryptionAvailable: () => false }
+}))
 
 import type { OrcaProfileCloudSummary } from '../../shared/orca-profiles'
 import { ensureActiveOrcaProfile } from '../orca-profiles/profile-index-store'
@@ -16,6 +19,7 @@ import {
   recordSuccessfulCloudSessionLogin,
   tombstoneCloudSession
 } from '../orca-profiles/profile-cloud-session-mutation'
+import { saveOrcaCloudSession } from '../orca-profiles/profile-cloud-session-store'
 import { ArtifactCloudService } from './artifact-cloud-service'
 
 const createdPaths: string[] = []
@@ -84,6 +88,7 @@ const writeRequest = {
 
 afterEach(async () => {
   vi.unstubAllGlobals()
+  vi.unstubAllEnvs()
   vi.restoreAllMocks()
   await Promise.all(
     createdPaths.splice(0).map((path) => rm(path, { recursive: true, force: true }))
@@ -91,6 +96,96 @@ afterEach(async () => {
 })
 
 describe('ArtifactCloudService record authorization', () => {
+  it('passes an opaque cursor and returns the complete list page', async () => {
+    const { service } = await setup()
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ artifacts: [], nextCursor: 'next-page' }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' }
+      })
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(
+      service.list({ apiUrl, authToken: 'token-a', cursor: 'opaque/+=' })
+    ).resolves.toEqual({
+      status: 'ok',
+      value: { artifacts: [], nextCursor: 'next-page' }
+    })
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${apiUrl}/v1/artifacts?cursor=opaque%2F%2B%3D`,
+      expect.any(Object)
+    )
+  })
+
+  it('uses a distinct idempotency key for each logical share', async () => {
+    const { service } = await setup()
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(createResponse('artifact-a'))
+      .mockResolvedValueOnce(createResponse('artifact-b'))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await service.share(writeRequest)
+    await service.share({ ...writeRequest, sourceKey: '/repo/other.html' })
+
+    const firstKey = requestHeader(fetchMock, 0, 'idempotency-key')
+    const secondKey = requestHeader(fetchMock, 1, 'idempotency-key')
+    expect(firstKey).toMatch(/^[0-9a-f-]{36}$/)
+    expect(secondKey).toMatch(/^[0-9a-f-]{36}$/)
+    expect(firstKey).not.toBe(secondKey)
+  })
+
+  it('keeps the idempotency key stable across an auth-refresh retry', async () => {
+    const { service, profileId, userDataPath } = await setup()
+    vi.stubEnv('ORCA_CLOUD_API_URL', 'http://localhost:4100')
+    vi.stubEnv('ORCA_CLOUD_CLIENT_ID', 'desktop-client')
+    saveOrcaCloudSession(profileId, userDataPath, {
+      accessToken: 'access-old',
+      refreshToken: 'refresh-old',
+      expiresAt: Date.now() + 120_000,
+      capabilities: { flags: {}, refreshedAt: Date.now() }
+    })
+    let artifactAttempts = 0
+    const fetchMock = vi.fn().mockImplementation((input: string | URL) => {
+      const url = String(input)
+      if (url === `${apiUrl}/v1/artifacts`) {
+        artifactAttempts += 1
+        return Promise.resolve(
+          artifactAttempts === 1
+            ? new Response(JSON.stringify({ code: 'invalid_access_token' }), { status: 401 })
+            : createResponse()
+        )
+      }
+      if (url === 'http://localhost:4100/v1/desktop/auth/refresh') {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              accessToken: 'access-new',
+              refreshToken: 'refresh-new',
+              expiresAt: Date.now() + 3_600_000,
+              cloud: cloudA,
+              capabilities: { flags: {}, refreshedAt: Date.now() }
+            }),
+            { status: 200, headers: { 'content-type': 'application/json' } }
+          )
+        )
+      }
+      throw new Error(`Unexpected URL: ${url}`)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(service.share({ ...writeRequest, authToken: undefined })).resolves.toMatchObject({
+      status: 'ok'
+    })
+
+    expect(requestHeader(fetchMock, 0, 'authorization')).toBe('Bearer access-old')
+    expect(requestHeader(fetchMock, 2, 'authorization')).toBe('Bearer access-new')
+    expect(requestHeader(fetchMock, 0, 'idempotency-key')).toBe(
+      requestHeader(fetchMock, 2, 'idempotency-key')
+    )
+  })
+
   it('refuses account B update and unshare after account A signs out', async () => {
     const { userDataPath, profileId, service } = await setup()
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(createResponse()))
@@ -187,3 +282,12 @@ describe('ArtifactCloudService record authorization', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2)
   })
 })
+
+function requestHeader(
+  fetchMock: ReturnType<typeof vi.fn>,
+  index: number,
+  name: string
+): string | null {
+  const init = fetchMock.mock.calls[index]?.[1] as RequestInit | undefined
+  return new Headers(init?.headers).get(name)
+}

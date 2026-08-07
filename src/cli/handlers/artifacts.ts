@@ -2,6 +2,7 @@ import { basename, extname, resolve } from 'node:path'
 import type {
   ArtifactCloudOperation,
   ArtifactCloudOptions,
+  ArtifactListPage,
   ArtifactListItem,
   ArtifactWriteRequest
 } from '../../shared/artifacts'
@@ -13,7 +14,7 @@ import {
 import { readArtifactFileWithinLimit } from '../../shared/artifact-file-read'
 import type { CommandHandler, HandlerContext } from '../dispatch'
 import { RuntimeClientError } from '../runtime-client'
-import { formatArtifactList, formatArtifactShared } from '../artifact-format'
+import { formatArtifactListPage, formatArtifactShared } from '../artifact-format'
 import { printResult } from '../format'
 
 function stringFlag(ctx: HandlerContext, name: string): string | undefined {
@@ -134,12 +135,16 @@ function requireOperation<T>(operation: ArtifactCloudOperation<T>): T {
 export const ARTIFACT_HANDLERS: Record<string, CommandHandler> = {
   'artifacts list': async (ctx) => {
     rejectRemoteSelectionFlags(ctx)
-    const response = await ctx.client.call<ArtifactCloudOperation<readonly ArtifactListItem[]>>(
+    const cursor = stringFlag(ctx, 'cursor')
+    const response = await ctx.client.call<ArtifactCloudOperation<ArtifactListPage>>(
       'artifacts.list',
-      cloudOptions(ctx)
+      {
+        ...cloudOptions(ctx),
+        ...(cursor ? { cursor } : {})
+      }
     )
     const value = requireOperation(response.result)
-    printResult({ ...response, result: value }, ctx.json, formatArtifactList)
+    printResult({ ...response, result: value }, ctx.json, formatArtifactListPage)
   },
   'artifacts share': async (ctx) => {
     rejectRemoteSelectionFlags(ctx)

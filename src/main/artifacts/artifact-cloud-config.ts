@@ -30,3 +30,10 @@ export function resolveArtifactCloudApiUrl(
   }
   return url.origin
 }
+
+export function allowsArtifactCloudAuthOverride(
+  env: NodeJS.ProcessEnv = process.env,
+  packaged = isPackaged()
+): boolean {
+  return env.NODE_ENV !== 'production' && !packaged
+}

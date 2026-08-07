@@ -6,6 +6,11 @@ const CloudOptions = {
   authToken: z.string().optional()
 }
 
+const ListOptions = z.object({
+  ...CloudOptions,
+  cursor: z.string().min(1).max(2_048).optional()
+})
+
 const WriteRequest = z.object({
   sourceKey: z.string().min(1),
   content: z.string().min(1),
@@ -18,7 +23,7 @@ const WriteRequest = z.object({
 export const ARTIFACT_METHODS: readonly RpcAnyMethod[] = [
   defineMethod({
     name: 'artifacts.list',
-    params: z.object(CloudOptions),
+    params: ListOptions,
     handler: (params, { runtime }) => runtime.listArtifacts(params)
   }),
   defineMethod({

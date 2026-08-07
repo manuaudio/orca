@@ -14896,7 +14896,10 @@
           "empty": "No shared artifacts",
           "emptyCopy": "Ask your agent to share an HTML or Markdown file, and it will appear here.",
           "openArtifact": "Open artifact",
-          "deleteArtifact": "Delete artifact"
+          "deleteArtifact": "Delete artifact",
+          "moreAvailable": "More artifacts are available",
+          "moreAvailableCopy": "Load the next page to continue.",
+          "loadMoreFailed": "Could not load more artifacts."
         },
         "copySuccess": "Artifact link copied",
         "copyFailed": "Could not copy artifact link",
@@ -14905,7 +14908,10 @@
         "preview": "Artifact preview",
         "previewUnavailable": "Preview unavailable",
         "previewUnavailableDescription": "Open this artifact in your browser to view it.",
-        "actions": "Artifact actions"
+        "actions": "Artifact actions",
+        "ArtifactCollection": {
+          "loadMore": "Load more"
+        }
       }
     },
     "i18n": {

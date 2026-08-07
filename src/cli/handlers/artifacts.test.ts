@@ -90,6 +90,31 @@ describe('artifact CLI handlers', () => {
     expect(call).not.toHaveBeenCalled()
   })
 
+  it('passes an opaque list cursor through and prints the next cursor', async () => {
+    const call = vi.fn().mockResolvedValue({
+      id: 'request-1',
+      ok: true,
+      result: {
+        status: 'ok',
+        value: { artifacts: [item], nextCursor: 'next opaque page' }
+      },
+      _meta: { runtimeId: 'runtime-1' }
+    })
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined)
+
+    await ARTIFACT_HANDLERS['artifacts list']!({
+      client: { call } as never,
+      cwd: '/repo',
+      flags: new Map([['cursor', 'current opaque page']]),
+      json: false
+    })
+
+    expect(call).toHaveBeenCalledWith('artifacts.list', { cursor: 'current opaque page' })
+    expect(log).toHaveBeenCalledWith(
+      expect.stringContaining('More artifacts: --cursor next opaque page')
+    )
+  })
+
   it.each(['environment', 'pairing-code'])(
     'rejects explicit remote selector --%s',
     async (flag) => {

@@ -48,6 +48,9 @@ describe('ArtifactCollection', () => {
         selectedArtifact={items[0]}
         selectArtifact={selectArtifact}
         deleteArtifact={vi.fn()}
+        hasMore={false}
+        loadingMore={false}
+        loadMore={vi.fn()}
       />
     )
 

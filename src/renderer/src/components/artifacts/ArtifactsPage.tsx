@@ -1,7 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Files, Loader2, RefreshCw, X } from 'lucide-react'
 import type { ArtifactCloudOperation, ArtifactListItem } from '../../../../shared/artifacts'
-import type { OrcaProfileAuthStatus } from '../../../../shared/orca-profiles'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useConfirmationDialog } from '@/components/confirmation-dialog-context'
@@ -9,15 +8,9 @@ import { callRuntimeRpc } from '@/runtime/runtime-rpc-client'
 import { useAppStore } from '@/store'
 import { translate } from '@/i18n/i18n'
 import { ArtifactCollection } from './ArtifactCollection'
+import { artifactAccountIdentity, useArtifactPagination } from './useArtifactPagination'
 
 const LOCAL_RUNTIME = { kind: 'local' } as const
-const EMPTY_ARTIFACTS: readonly ArtifactListItem[] = []
-
-function artifactAccountIdentity(authStatus: OrcaProfileAuthStatus | null): string | null {
-  return authStatus?.state === 'connected'
-    ? `${authStatus.activeProfileId}:${authStatus.cloud?.userId ?? ''}:${authStatus.cloud?.cloudProfileId ?? ''}`
-    : null
-}
 
 export default function ArtifactsPage(): React.JSX.Element {
   const closePage = useAppStore((state) => state.closeArtifactsPage)
@@ -26,75 +19,24 @@ export default function ArtifactsPage(): React.JSX.Element {
   const connect = useAppStore((state) => state.connectCurrentOrcaProfile)
   const refreshAuth = useAppStore((state) => state.refreshCurrentOrcaProfileAuth)
   const confirm = useConfirmationDialog()
-  const [artifactState, setArtifactState] = useState<{
-    identity: string | null
-    items: readonly ArtifactListItem[]
-  }>({ identity: null, items: [] })
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
   const [deleting, setDeleting] = useState<{ identity: string; slug: string } | null>(null)
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null)
-  const loadSequence = useRef(0)
   const signedIn = authStatus?.state === 'connected'
-  const accountIdentity = artifactAccountIdentity(authStatus)
-  const artifacts =
-    artifactState.identity === accountIdentity ? artifactState.items : EMPTY_ARTIFACTS
+  const {
+    accountIdentity,
+    artifacts,
+    error,
+    loading,
+    loadingMore,
+    nextCursor,
+    loadArtifacts,
+    loadMoreArtifacts,
+    removeArtifact,
+    setError
+  } = useArtifactPagination(authStatus, refreshAuth)
   const deletingId = deleting?.identity === accountIdentity ? deleting.slug : null
   const selectedArtifact =
     artifacts.find(({ artifact }) => artifact.slug === selectedSlug) ?? artifacts[0] ?? null
-
-  const loadArtifacts = useCallback(async (): Promise<void> => {
-    const sequence = ++loadSequence.current
-    if (!accountIdentity) {
-      setArtifactState({ identity: null, items: [] })
-      setSelectedSlug(null)
-      setError(null)
-      setLoading(false)
-      return
-    }
-    setLoading(true)
-    setError(null)
-    try {
-      const result = await callRuntimeRpc<ArtifactCloudOperation<readonly ArtifactListItem[]>>(
-        LOCAL_RUNTIME,
-        'artifacts.list',
-        {}
-      )
-      if (sequence !== loadSequence.current) {
-        return
-      }
-      if (result.status === 'ok') {
-        setArtifactState({ identity: accountIdentity, items: result.value })
-      } else {
-        await refreshAuth()
-        setError(
-          translate(
-            'auto.components.artifacts.ArtifactsPage.signInAgain',
-            'Sign in to Orca again to load artifacts.'
-          )
-        )
-      }
-    } catch (loadError) {
-      if (sequence !== loadSequence.current) {
-        return
-      }
-      console.error('Failed to load artifacts:', loadError)
-      setError(
-        translate('auto.components.artifacts.ArtifactsPage.loadFailed', 'Could not load artifacts.')
-      )
-    } finally {
-      if (sequence === loadSequence.current) {
-        setLoading(false)
-      }
-    }
-  }, [accountIdentity, refreshAuth])
-
-  useEffect(() => {
-    void loadArtifacts()
-    return () => {
-      loadSequence.current += 1
-    }
-  }, [loadArtifacts])
 
   useEffect(() => {
     setSelectedSlug((current) => {
@@ -152,14 +94,7 @@ export default function ArtifactsPage(): React.JSX.Element {
         await refreshAuth()
         throw new Error(result.status)
       }
-      setArtifactState((current) =>
-        current.identity === requestedIdentity
-          ? {
-              ...current,
-              items: current.items.filter(({ artifact }) => artifact.slug !== item.artifact.slug)
-            }
-          : current
-      )
+      removeArtifact(requestedIdentity, item.artifact.slug)
     } catch (deleteError) {
       console.error('Failed to delete artifact:', deleteError)
       if (requestedAccountIsCurrent()) {
@@ -266,14 +201,40 @@ export default function ArtifactsPage(): React.JSX.Element {
             <div className="flex flex-1 flex-col items-center justify-center gap-2 text-center">
               <Files className="size-8 text-muted-foreground" />
               <h2 className="text-sm font-semibold">
-                {translate('auto.components.artifacts.ArtifactsPage.empty', 'No shared artifacts')}
+                {nextCursor
+                  ? translate(
+                      'auto.components.artifacts.ArtifactsPage.moreAvailable',
+                      'More artifacts are available'
+                    )
+                  : translate(
+                      'auto.components.artifacts.ArtifactsPage.empty',
+                      'No shared artifacts'
+                    )}
               </h2>
               <p className="text-xs text-muted-foreground">
-                {translate(
-                  'auto.components.artifacts.ArtifactsPage.emptyCopy',
-                  'Ask your agent to share an HTML or Markdown file, and it will appear here.'
-                )}
+                {nextCursor
+                  ? translate(
+                      'auto.components.artifacts.ArtifactsPage.moreAvailableCopy',
+                      'Load the next page to continue.'
+                    )
+                  : translate(
+                      'auto.components.artifacts.ArtifactsPage.emptyCopy',
+                      'Ask your agent to share an HTML or Markdown file, and it will appear here.'
+                    )}
               </p>
+              {nextCursor ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="mt-1"
+                  disabled={loadingMore}
+                  onClick={() => void loadMoreArtifacts()}
+                >
+                  {loadingMore ? <Loader2 className="animate-spin" /> : null}
+                  {translate('auto.components.artifacts.ArtifactCollection.loadMore', 'Load more')}
+                </Button>
+              ) : null}
             </div>
           ) : (
             selectedArtifact && (
@@ -283,6 +244,9 @@ export default function ArtifactsPage(): React.JSX.Element {
                 selectedArtifact={selectedArtifact}
                 selectArtifact={setSelectedSlug}
                 deleteArtifact={(target) => void deleteArtifact(target)}
+                hasMore={Boolean(nextCursor)}
+                loadingMore={loadingMore}
+                loadMore={() => void loadMoreArtifacts()}
               />
             )
           )}

@@ -19,6 +19,11 @@ export type ArtifactListItem = {
   shareUrl: string
 }
 
+export type ArtifactListPage = {
+  artifacts: readonly ArtifactListItem[]
+  nextCursor?: string
+}
+
 export type ArtifactWriteRequest = {
   sourceKey: string
   content: string
@@ -32,6 +37,10 @@ export type ArtifactWriteRequest = {
 export type ArtifactCloudOptions = {
   apiUrl?: string
   authToken?: string
+}
+
+export type ArtifactListOptions = ArtifactCloudOptions & {
+  cursor?: string
 }
 
 export type ArtifactCloudOperation<T> =

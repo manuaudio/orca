@@ -1,7 +1,9 @@
-import { createHash } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import type {
   ArtifactCloudOperation,
   ArtifactCloudOptions,
+  ArtifactListOptions,
+  ArtifactListPage,
   ArtifactListItem,
   ArtifactWriteRequest
 } from '../../shared/artifacts'
@@ -9,7 +11,10 @@ import { ensureActiveOrcaProfile } from '../orca-profiles/profile-index-store'
 import { getOrcaCloudAuthConfig } from '../orca-profiles/profile-cloud-auth-config'
 import { OrcaCloudRequestError } from '../orca-profiles/profile-cloud-client'
 import { runWithFreshOrcaCloudSession } from '../orca-profiles/profile-cloud-session-refresh'
-import { resolveArtifactCloudApiUrl } from './artifact-cloud-config'
+import {
+  allowsArtifactCloudAuthOverride,
+  resolveArtifactCloudApiUrl
+} from './artifact-cloud-config'
 import {
   type ArtifactShareScope,
   captureArtifactShareLifecycle,
@@ -107,20 +112,20 @@ function explicitTokenAuthContext(
 export class ArtifactCloudService {
   constructor(private readonly userDataPath: string) {}
 
-  list(
-    options: ArtifactCloudOptions
-  ): Promise<ArtifactCloudOperation<readonly ArtifactListItem[]>> {
+  list(options: ArtifactListOptions): Promise<ArtifactCloudOperation<ArtifactListPage>> {
     return this.withAuth(options, async (token, apiUrl) => {
-      const response = await artifactRequest<{ artifacts: ArtifactListItem[] }>(apiUrl, token, '')
-      return response.artifacts
+      const query = options.cursor ? `?cursor=${encodeURIComponent(options.cursor)}` : ''
+      return artifactRequest<ArtifactListPage>(apiUrl, token, query)
     })
   }
 
   share(request: ArtifactWriteRequest): Promise<ArtifactCloudOperation<ArtifactListItem>> {
+    const idempotencyKey = randomUUID()
     return this.withAuth(request, async (token, apiUrl, auth) => {
       const response = await artifactRequest<ArtifactCreateResponse>(apiUrl, token, '', {
         method: 'POST',
-        body: writeBody(request)
+        body: writeBody(request),
+        idempotencyKey
       })
       auth.assertCurrent()
       saveArtifactShareRecord(auth.profileId, this.userDataPath, request.sourceKey, {
@@ -191,6 +196,11 @@ export class ArtifactCloudService {
     const apiUrl = resolveArtifactCloudApiUrl(options.apiUrl)
     const active = ensureActiveOrcaProfile(this.userDataPath)
     if (options.authToken?.trim()) {
+      if (!allowsArtifactCloudAuthOverride()) {
+        throw new Error(
+          'Artifact authentication overrides are available only in development builds.'
+        )
+      }
       const token = options.authToken.trim()
       const auth = explicitTokenAuthContext(active, apiUrl, token, this.userDataPath)
       const value = await operation(token, apiUrl, auth)
@@ -234,13 +244,14 @@ async function artifactRequest<T>(
   apiUrl: string,
   token: string,
   path: string,
-  options: { method?: string; body?: unknown; editToken?: string } = {}
+  options: { method?: string; body?: unknown; editToken?: string; idempotencyKey?: string } = {}
 ): Promise<T> {
   const response = await fetch(`${apiUrl}/v1/artifacts${path}`, {
     method: options.method ?? 'GET',
     headers: {
       authorization: `Bearer ${token}`,
       ...(options.editToken ? { 'x-orca-edit-token': options.editToken } : {}),
+      ...(options.idempotencyKey ? { 'idempotency-key': options.idempotencyKey } : {}),
       ...(options.body ? { 'content-type': 'application/json' } : {})
     },
     body: options.body ? JSON.stringify(options.body) : undefined,

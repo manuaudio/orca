@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { resolveArtifactCloudApiUrl } from './artifact-cloud-config'
+import {
+  allowsArtifactCloudAuthOverride,
+  resolveArtifactCloudApiUrl
+} from './artifact-cloud-config'
 
 describe('resolveArtifactCloudApiUrl', () => {
   it('uses the first-party production origin by default', () => {
@@ -24,5 +27,11 @@ describe('resolveArtifactCloudApiUrl', () => {
     expect(() => resolveArtifactCloudApiUrl('https://share.onorca.dev/path', {}, false)).toThrow(
       /origin/
     )
+  })
+
+  it('allows auth token overrides only in non-production development builds', () => {
+    expect(allowsArtifactCloudAuthOverride({}, false)).toBe(true)
+    expect(allowsArtifactCloudAuthOverride({ NODE_ENV: 'production' }, false)).toBe(false)
+    expect(allowsArtifactCloudAuthOverride({}, true)).toBe(false)
   })
 })

@@ -88,24 +88,26 @@ describe('ArtifactsPage', () => {
     })
     mocks.rpc.mockResolvedValue({
       status: 'ok',
-      value: [
-        {
-          artifact: {
-            byteSize: 1024,
-            createdAt: '2026-08-01T12:00:00.000Z',
-            deletedAt: null,
-            expiresAt: '2026-09-01T12:00:00.000Z',
-            originalFileName: 'report.html',
-            renderedContentType: 'text/html',
-            slug: 'report-123',
-            sourceContentType: 'text/html',
-            title: 'Quarterly report',
-            updatedAt: '2026-08-02T12:00:00.000Z',
-            version: 1
-          },
-          shareUrl: 'https://share.onorca.dev/a/report-123'
-        }
-      ]
+      value: {
+        artifacts: [
+          {
+            artifact: {
+              byteSize: 1024,
+              createdAt: '2026-08-01T12:00:00.000Z',
+              deletedAt: null,
+              expiresAt: '2026-09-01T12:00:00.000Z',
+              originalFileName: 'report.html',
+              renderedContentType: 'text/html',
+              slug: 'report-123',
+              sourceContentType: 'text/html',
+              title: 'Quarterly report',
+              updatedAt: '2026-08-02T12:00:00.000Z',
+              version: 1
+            },
+            shareUrl: 'https://share.onorca.dev/a/report-123'
+          }
+        ]
+      }
     })
   })
 
@@ -172,7 +174,7 @@ describe('ArtifactsPage', () => {
   })
 
   it('explains the agent-first sharing workflow', async () => {
-    mocks.rpc.mockResolvedValue({ status: 'ok', value: [] })
+    mocks.rpc.mockResolvedValue({ status: 'ok', value: { artifacts: [] } })
     render(<ArtifactsPage />)
 
     const heading = await screen.findByText('No shared artifacts')
@@ -181,6 +183,150 @@ describe('ArtifactsPage', () => {
       screen.getByText('Ask your agent to share an HTML or Markdown file, and it will appear here.')
     ).toBeInTheDocument()
     expect(screen.queryByText(/orca artifacts share/)).not.toBeInTheDocument()
+  })
+
+  it('loads each cursor once and appends the next artifact page', async () => {
+    let resolveNextPage!: (value: unknown) => void
+    mocks.rpc
+      .mockResolvedValueOnce({
+        status: 'ok',
+        value: {
+          artifacts: [artifactListItem('First page', 'first-page')],
+          nextCursor: 'opaque cursor'
+        }
+      })
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          resolveNextPage = resolve
+        })
+      )
+    render(<ArtifactsPage />)
+
+    await screen.findAllByText('First page')
+    const loadMore = screen.getByRole('button', { name: 'Load more' })
+    fireEvent.click(loadMore)
+    fireEvent.click(loadMore)
+
+    expect(mocks.rpc).toHaveBeenCalledTimes(2)
+    expect(mocks.rpc).toHaveBeenLastCalledWith({ kind: 'local' }, 'artifacts.list', {
+      cursor: 'opaque cursor'
+    })
+    resolveNextPage({
+      status: 'ok',
+      value: { artifacts: [artifactListItem('Second page', 'second-page')] }
+    })
+
+    expect(await screen.findByText('Second page')).toBeInTheDocument()
+    expect(screen.getAllByText('First page')).toHaveLength(2)
+    expect(screen.queryByRole('button', { name: 'Load more' })).not.toBeInTheDocument()
+  })
+
+  it('can continue from an empty page that has a next cursor', async () => {
+    mocks.rpc
+      .mockResolvedValueOnce({
+        status: 'ok',
+        value: { artifacts: [], nextCursor: 'after-empty-page' }
+      })
+      .mockResolvedValueOnce({
+        status: 'ok',
+        value: { artifacts: [artifactListItem('Older artifact', 'older-artifact')] }
+      })
+    render(<ArtifactsPage />)
+
+    expect(await screen.findByText('More artifacts are available')).toBeInTheDocument()
+    expect(screen.queryByText('No shared artifacts')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Load more' }))
+
+    expect(await screen.findAllByText('Older artifact')).toHaveLength(2)
+  })
+
+  it('keeps loaded artifacts when loading another page fails', async () => {
+    mocks.rpc
+      .mockResolvedValueOnce({
+        status: 'ok',
+        value: {
+          artifacts: [artifactListItem('Still visible', 'still-visible')],
+          nextCursor: 'next-page'
+        }
+      })
+      .mockRejectedValueOnce(new Error('network down'))
+    render(<ArtifactsPage />)
+
+    await screen.findAllByText('Still visible')
+    fireEvent.click(screen.getByRole('button', { name: 'Load more' }))
+
+    expect(await screen.findByText('Could not load more artifacts.')).toBeInTheDocument()
+    expect(screen.getAllByText('Still visible')).toHaveLength(2)
+    expect(screen.getByRole('button', { name: 'Load more' })).toBeEnabled()
+  })
+
+  it('does not surface an initial auth error after the account changes during refresh', async () => {
+    let resolveRefresh!: () => void
+    mocks.refreshAuth.mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        resolveRefresh = resolve
+      })
+    )
+    mocks.rpc.mockResolvedValueOnce({ status: 'reconnect-required' }).mockResolvedValueOnce({
+      status: 'ok',
+      value: { artifacts: [artifactListItem('Account B', 'account-b')] }
+    })
+    const view = render(<ArtifactsPage />)
+    await waitFor(() => expect(mocks.refreshAuth).toHaveBeenCalledOnce())
+
+    mocks.authStatus = {
+      activeProfileId: 'profile-b',
+      cloud: { cloudProfileId: 'cloud-b', userId: 'user-b' },
+      configured: true,
+      state: 'connected'
+    }
+    view.rerender(<ArtifactsPage />)
+    expect(await screen.findAllByText('Account B')).toHaveLength(2)
+    resolveRefresh()
+
+    await waitFor(() =>
+      expect(screen.queryByText('Sign in to Orca again to load artifacts.')).not.toBeInTheDocument()
+    )
+  })
+
+  it('does not surface a load-more auth error after switching accounts during refresh', async () => {
+    let resolveRefresh!: () => void
+    mocks.refreshAuth.mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        resolveRefresh = resolve
+      })
+    )
+    mocks.rpc
+      .mockResolvedValueOnce({
+        status: 'ok',
+        value: {
+          artifacts: [artifactListItem('Account A', 'account-a')],
+          nextCursor: 'account-a-next'
+        }
+      })
+      .mockResolvedValueOnce({ status: 'reconnect-required' })
+      .mockResolvedValueOnce({
+        status: 'ok',
+        value: { artifacts: [artifactListItem('Account B', 'account-b')] }
+      })
+    const view = render(<ArtifactsPage />)
+    await screen.findAllByText('Account A')
+    fireEvent.click(screen.getByRole('button', { name: 'Load more' }))
+    await waitFor(() => expect(mocks.refreshAuth).toHaveBeenCalledOnce())
+
+    mocks.authStatus = {
+      activeProfileId: 'profile-b',
+      cloud: { cloudProfileId: 'cloud-b', userId: 'user-b' },
+      configured: true,
+      state: 'connected'
+    }
+    view.rerender(<ArtifactsPage />)
+    expect(await screen.findAllByText('Account B')).toHaveLength(2)
+    resolveRefresh()
+
+    await waitFor(() =>
+      expect(screen.queryByText('Sign in to Orca again to load artifacts.')).not.toBeInTheDocument()
+    )
   })
 
   it('never renders artifacts loaded for a previous account', async () => {
@@ -198,28 +344,30 @@ describe('ArtifactsPage', () => {
       configured: true,
       state: 'connected'
     }
-    mocks.rpc.mockResolvedValueOnce({ status: 'ok', value: [] })
+    mocks.rpc.mockResolvedValueOnce({ status: 'ok', value: { artifacts: [] } })
     view.rerender(<ArtifactsPage />)
     resolveFirst({
       status: 'ok',
-      value: [
-        {
-          artifact: {
-            byteSize: 1,
-            createdAt: '2026-08-01T12:00:00.000Z',
-            deletedAt: null,
-            expiresAt: '2026-09-01T12:00:00.000Z',
-            originalFileName: 'account-a-secret.html',
-            renderedContentType: 'text/html',
-            slug: 'account-a-secret',
-            sourceContentType: 'text/html',
-            title: 'Account A secret',
-            updatedAt: '2026-08-02T12:00:00.000Z',
-            version: 1
-          },
-          shareUrl: 'https://share.onorca.dev/a/account-a-secret'
-        }
-      ]
+      value: {
+        artifacts: [
+          {
+            artifact: {
+              byteSize: 1,
+              createdAt: '2026-08-01T12:00:00.000Z',
+              deletedAt: null,
+              expiresAt: '2026-09-01T12:00:00.000Z',
+              originalFileName: 'account-a-secret.html',
+              renderedContentType: 'text/html',
+              slug: 'account-a-secret',
+              sourceContentType: 'text/html',
+              title: 'Account A secret',
+              updatedAt: '2026-08-02T12:00:00.000Z',
+              version: 1
+            },
+            shareUrl: 'https://share.onorca.dev/a/account-a-secret'
+          }
+        ]
+      }
     })
 
     await screen.findByText('No shared artifacts')
@@ -231,7 +379,7 @@ describe('ArtifactsPage', () => {
     mocks.confirm.mockResolvedValue(true)
     mocks.rpc.mockResolvedValueOnce({
       status: 'ok',
-      value: [artifactListItem('Shared slug A', 'shared-slug')]
+      value: { artifacts: [artifactListItem('Shared slug A', 'shared-slug')] }
     })
     mocks.rpc.mockReturnValueOnce(
       new Promise((resolve) => {
@@ -252,7 +400,7 @@ describe('ArtifactsPage', () => {
     }
     mocks.rpc.mockResolvedValueOnce({
       status: 'ok',
-      value: [artifactListItem('Shared slug B', 'shared-slug')]
+      value: { artifacts: [artifactListItem('Shared slug B', 'shared-slug')] }
     })
     view.rerender(<ArtifactsPage />)
     resolveDelete({ status: 'ok', value: undefined })

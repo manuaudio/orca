@@ -1,5 +1,7 @@
-import { Files } from 'lucide-react'
+import { Files, Loader2 } from 'lucide-react'
 import type { ArtifactListItem } from '../../../../shared/artifacts'
+import { Button } from '@/components/ui/button'
+import { translate } from '@/i18n/i18n'
 import { cn } from '@/lib/utils'
 import { ArtifactActions } from './ArtifactActions'
 import { ArtifactPreview } from './ArtifactPreview'
@@ -29,13 +31,19 @@ export function ArtifactCollection({
   deletingId,
   selectedArtifact,
   selectArtifact,
-  deleteArtifact
+  deleteArtifact,
+  hasMore,
+  loadingMore,
+  loadMore
 }: {
   artifacts: readonly ArtifactListItem[]
   deletingId: string | null
   selectedArtifact: ArtifactListItem
   selectArtifact: (slug: string) => void
   deleteArtifact: (item: ArtifactListItem) => void
+  hasMore: boolean
+  loadingMore: boolean
+  loadMore: () => void
 }): React.JSX.Element {
   return (
     <div className="grid min-h-0 flex-1 grid-cols-[16rem_minmax(0,1fr)] overflow-hidden rounded-md border border-border/50 bg-muted/20">
@@ -64,6 +72,21 @@ export function ArtifactCollection({
             </button>
           )
         })}
+        {hasMore ? (
+          <div className="border-t border-border/50 p-2">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="w-full"
+              disabled={loadingMore}
+              onClick={loadMore}
+            >
+              {loadingMore ? <Loader2 className="animate-spin" /> : null}
+              {translate('auto.components.artifacts.ArtifactCollection.loadMore', 'Load more')}
+            </Button>
+          </div>
+        ) : null}
       </aside>
       <section className="flex min-h-0 min-w-0 flex-1 flex-col bg-background">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/50 px-4 py-3">

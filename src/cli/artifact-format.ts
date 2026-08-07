@@ -1,4 +1,4 @@
-import type { ArtifactListItem } from '../shared/artifacts'
+import type { ArtifactListItem, ArtifactListPage } from '../shared/artifacts'
 
 export function formatArtifactList(artifacts: readonly ArtifactListItem[]): string {
   if (artifacts.length === 0) {
@@ -10,6 +10,11 @@ export function formatArtifactList(artifacts: readonly ArtifactListItem[]): stri
       return `${name}\n  id: ${artifact.slug}\n  updated: ${artifact.updatedAt}\n  url: ${shareUrl}`
     })
     .join('\n\n')
+}
+
+export function formatArtifactListPage(page: ArtifactListPage): string {
+  const rows = formatArtifactList(page.artifacts)
+  return page.nextCursor ? `${rows}\nMore artifacts: --cursor ${page.nextCursor}` : rows
 }
 
 export function formatArtifactShared(item: ArtifactListItem): string {
