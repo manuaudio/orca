@@ -12,6 +12,7 @@ import type {
 } from '../../../../shared/native-chat-session-options'
 
 type CatalogEnrichmentEntry = {
+  agent: AgentType
   state: 'idle' | 'pending' | 'settled'
   models: CatalogModel[] | null
   listeners: Set<(models: CatalogModel[]) => void>
@@ -54,6 +55,7 @@ export function subscribeNativeChatEnrichedModels(
 ): () => void {
   const key = enrichmentKey(agent, hostKey)
   const entry = enrichmentByAgentHost.get(key) ?? {
+    agent,
     state: 'idle' as const,
     models: null,
     listeners: new Set<(models: CatalogModel[]) => void>()
@@ -81,8 +83,8 @@ export function resolveNativeChatLaunchSessionOptions(
     return values
   }
   let probed = false
-  for (const [key, entry] of enrichmentByAgentHost) {
-    if (entry.models && (JSON.parse(key) as [AgentType])[0] === agent) {
+  for (const entry of enrichmentByAgentHost.values()) {
+    if (entry.agent === agent && entry.models) {
       probed = true
       if (entry.models.some((model) => model.id === values.model)) {
         return values
@@ -107,6 +109,7 @@ export function ensureNativeChatModelEnrichment(args: {
     return
   }
   const entry: CatalogEnrichmentEntry = existing ?? {
+    agent: args.agent,
     state: 'idle',
     models: null,
     listeners: new Set()

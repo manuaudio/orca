@@ -123,8 +123,9 @@ function finish(
   }
   const snapshot = ctx.publish()
   const record = ctx.getRecord()
-  if (ctx.mode === 'draft' && typeof record.model?.value === 'string') {
-    ctx.onDraftValuesChanged?.(flattenNativeChatSessionOptionRecord(record, record.model.value))
+  const draftModelId = trackedModelId(record)
+  if (ctx.mode === 'draft' && draftModelId !== null) {
+    ctx.onDraftValuesChanged?.(flattenNativeChatSessionOptionRecord(record, draftModelId))
   }
   return { snapshot }
 }
