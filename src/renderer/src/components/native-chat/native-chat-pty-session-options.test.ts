@@ -126,7 +126,7 @@ describe('native chat PTY session options', () => {
       optionId: 'effort',
       value: 'high',
       // Claude tracks a real model here, so this stays a persistable selection.
-      modelIsCliDefault: false
+      modelIsUnverifiedDefault: false
     })
   })
 
@@ -733,24 +733,25 @@ describe('native chat PTY session options', () => {
     })
   })
 
-  it('does not adopt grok’s CLI default as a persisted launch model', async () => {
+  it('does not adopt grok’s unprobed seed default as a persisted launch model', async () => {
     // Regression: setting an option under the CLI default wrote `model` into settings,
     // so every later grok launch app-wide emitted `-m grok-4.5` — on an account without
-    // that model, a fatal launch the user never opted into.
+    // that model, a fatal launch the user never opted into. No discovery has run here,
+    // so `grok-4.5` is still only the seed's guess.
     let persisted: PersistedNativeChatSessionOptions = {}
     const surface = createNativeChatPtySessionOptions({
       agent: 'grok',
       scopeKey: 'pty-1',
       mode: 'live',
       dispatchCommand: vi.fn(),
-      persistSelection: ({ modelId, optionId, value, modelIsCliDefault }) => {
+      persistSelection: ({ modelId, optionId, value, modelIsUnverifiedDefault }) => {
         persisted = updateNativeChatSessionOptionDefaults({
           persisted,
           agent: 'grok',
           modelId,
           optionId,
           value,
-          modelIsCliDefault
+          modelIsUnverifiedDefault
         })
       }
     })!
@@ -846,9 +847,44 @@ describe('native chat PTY session options', () => {
       expect.objectContaining({ modelId: 'grok-5', optionId: 'effort', value: 'low' })
     )
     // A tracked model is returned verbatim by the resolver, so this re-resolution can
-    // only ever move an untracked, never-selected id — never one the user picked.
+    // only ever move an untracked, never-selected id — never one the user picked. The
+    // probe that landed mid-dispatch also confirmed grok-5, so it is safe to adopt.
     expect(persistSelection).toHaveBeenCalledWith(
-      expect.objectContaining({ modelIsCliDefault: true })
+      expect.objectContaining({ modelIsUnverifiedDefault: false })
     )
+  })
+
+  it('carries an effort set under a probe-confirmed default into later launches', async () => {
+    // Regression: the value persisted under the model id while `model` stayed unset, so
+    // resolveNativeChatSessionOptionDefaults bailed and every new grok tab reverted to
+    // the catalog default — the setting silently never survived a relaunch.
+    let persisted: PersistedNativeChatSessionOptions = {}
+    const surface = createNativeChatPtySessionOptions({
+      agent: 'grok',
+      scopeKey: 'pty-1',
+      mode: 'live',
+      initialModels: mergeDiscoveredAuthoritativeModels(GROK_SESSION_OPTION_CATALOG.models, [
+        { id: 'grok-4.5', label: 'Grok 4.5', isDefault: true, options: [] }
+      ]),
+      dispatchCommand: vi.fn(),
+      persistSelection: ({ modelId, optionId, value, modelIsUnverifiedDefault }) => {
+        persisted = updateNativeChatSessionOptionDefaults({
+          persisted,
+          agent: 'grok',
+          modelId,
+          optionId,
+          value,
+          modelIsUnverifiedDefault
+        })
+      }
+    })!
+
+    await surface.setOption('effort', 'low')
+
+    expect(persisted.grok?.model).toBe('grok-4.5')
+    expect(resolveNativeChatSessionOptionDefaults(persisted, 'grok')).toMatchObject({
+      model: 'grok-4.5',
+      effort: 'low'
+    })
   })
 })

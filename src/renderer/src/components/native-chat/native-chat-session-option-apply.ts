@@ -38,7 +38,7 @@ type SessionOptionApplyContext = {
     modelId: string
     optionId: string
     value: SessionOptionValue
-    modelIsCliDefault?: boolean
+    modelIsUnverifiedDefault?: boolean
   }) => Promise<void> | void
   onDraftValuesChanged?: (values: Record<string, SessionOptionValue>) => void
   publish: () => SessionOptionDescriptor[]
@@ -48,6 +48,9 @@ type SessionOptionApplyContext = {
     value: SessionOptionValue,
     source: 'applied' | 'dispatched'
   ) => string | null
+  /** Read at commit: a probe settling mid-dispatch turns the seed's guess into a
+   *  confirmed id, and only then may this value's model be adopted as a launch flag. */
+  modelIsUnverifiedDefault: () => boolean
 }
 
 /** Why: ordered applies make a later absolute target observe the result of an
@@ -101,9 +104,7 @@ function persist(
       modelId,
       optionId,
       value,
-      // An untracked record means no `-m` was ever emitted, so this id is the CLI's
-      // own default standing in as a scope — not a selection to persist.
-      modelIsCliDefault: ctx.getRecord().model === undefined
+      modelIsUnverifiedDefault: ctx.modelIsUnverifiedDefault()
     })
   }
 }

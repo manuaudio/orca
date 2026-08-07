@@ -32,8 +32,9 @@ type PersistSelection = (args: {
   modelId: string
   optionId: string
   value: SessionOptionValue
-  /** The model only scopes this value; it must not become a persisted launch flag. */
-  modelIsCliDefault?: boolean
+  /** The model is the seed's unprobed guess at the CLI default, so it only scopes this
+   *  value; it must not become a persisted launch flag. */
+  modelIsUnverifiedDefault?: boolean
 }) => Promise<void> | void
 
 export type NativeChatPtySessionOptionsSurface = SessionOptionsSurface & {
@@ -63,6 +64,9 @@ export function createNativeChatPtySessionOptions(
     return null
   }
   let models = [...(args.initialModels ?? catalog.models)]
+  // The enrichment cache only ever holds probe output, so being handed a list at all
+  // means `isDefault` below names the account's real default rather than the seed guess.
+  let modelsAreDiscovered = args.initialModels !== undefined
   let record =
     readNativeChatSessionOptionCache(args.scopeKey, args.fallbackScopeKey) ??
     createNativeChatSessionOptionRecord(args.agent)
@@ -118,13 +122,15 @@ export function createNativeChatPtySessionOptions(
 
   // Same load-bearing guard as the apply path: a truthy `modelId` implies a tracked
   // model for every agent without a CLI default, keeping the ungated flag false there.
+  const modelIsUnverifiedDefault = (): boolean => record.model === undefined && !modelsAreDiscovered
+
   const persist = (modelId: string | null, optionId: string, value: SessionOptionValue): void => {
     if (modelId) {
       void args.persistSelection?.({
         modelId,
         optionId,
         value,
-        modelIsCliDefault: record.model === undefined
+        modelIsUnverifiedDefault: modelIsUnverifiedDefault()
       })
     }
   }
@@ -140,7 +146,8 @@ export function createNativeChatPtySessionOptions(
     onDraftValuesChanged: args.onDraftValuesChanged,
     publish,
     clearModelTruth,
-    setTrackedValue
+    setTrackedValue,
+    modelIsUnverifiedDefault
   })
 
   return {
@@ -173,6 +180,7 @@ export function createNativeChatPtySessionOptions(
     },
     replaceModels: (nextModels) => {
       models = [...nextModels]
+      modelsAreDiscovered = true
       publish()
     }
   }

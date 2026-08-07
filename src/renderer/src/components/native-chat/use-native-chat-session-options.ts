@@ -107,7 +107,7 @@ export function useNativeChatSessionOptions(args: {
       reportedValues,
       dispatchCommand,
       onAgentPicker,
-      persistSelection: async ({ modelId, optionId, value, modelIsCliDefault }) => {
+      persistSelection: async ({ modelId, optionId, value, modelIsUnverifiedDefault }) => {
         // Why: read the live persisted defaults at write time (after any prior
         // write in this chain settles) and merge only this selection onto them,
         // rather than a baseline captured once at surface creation. A frozen
@@ -124,7 +124,7 @@ export function useNativeChatSessionOptions(args: {
               modelId,
               optionId,
               value,
-              modelIsCliDefault
+              modelIsUnverifiedDefault
             })
             return useAppStore.getState().updateSettings({ nativeChatSessionOptions: next })
           })

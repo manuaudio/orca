@@ -69,16 +69,13 @@ export type AgentSessionOptionCatalog = {
    * decorative: agents whose default comes from account or user config would otherwise
    * present a guess as the launch's model.
    *
+   * Setting an option under this default adopts the model as a persisted launch flag,
+   * but only once a probe has confirmed it — until then the id is the seed's guess and
+   * the value stays scoped to it, reaching no later launch. See `modelIsUnverifiedDefault`.
+   *
    * Known gap: "no model flag" is unverified. A user `-m` in `agentArgs` launches that
    * model while the picker, which never reads launch args, still names the CLI default.
-   * Harmless today — `modelIsCliDefault` keeps it out of persisted launch flags — but a
-   * real fix means threading `modelApply.agentArgsOverride` through to the surface.
-   *
-   * Known gap: options set under this default are honored in-session but reach no later
-   * launch. They persist under the model's id while `model` stays unset — deliberately,
-   * since setting it would emit `-m` — and both `resolveNativeChatSessionOptionDefaults`
-   * and `resolveAgentSessionOptionLaunch` bail without it. Closing this means teaching
-   * both to resolve options from the default model while still refusing to emit `-m`. */
+   * A real fix means threading `modelApply.agentArgsOverride` through to the surface. */
   defaultModelIsCliDefault?: true
   listModels?: {
     command: string

@@ -19,12 +19,11 @@ export function parseGrokModelList(stdout: string): CommitMessageModel[] {
   if (headerIndex === -1) {
     return []
   }
-  const models: CommitMessageModel[] = []
-  const indexById = new Map<string, number>()
+  const byId = new Map<string, CommitMessageModel>()
   for (const line of lines.slice(headerIndex + 1)) {
     // Why: grok separates sections with a blank line, so ending there keeps a trailing
     // hint or footer bullet from entering the list as a selectable — and launchable — id.
-    if (line.trim() === '' && models.length > 0) {
+    if (line.trim() === '' && byId.size > 0) {
       break
     }
     const match = MODEL_BULLET.exec(line)
@@ -32,17 +31,12 @@ export function parseGrokModelList(stdout: string): CommitMessageModel[] {
     if (!id) {
       continue
     }
-    const isDefault = DEFAULT_MARKER.test(match[2])
-    const existingIndex = indexById.get(id)
-    if (existingIndex !== undefined) {
-      // A repeat row still carries the marker's news, even though the id is not new.
-      if (isDefault) {
-        models[existingIndex]!.isDefault = true
-      }
-      continue
+    const model = byId.get(id) ?? { id, label: labelFromModelId(id) }
+    // A repeat row still carries the marker's news, even though the id is not new.
+    if (DEFAULT_MARKER.test(match[2])) {
+      model.isDefault = true
     }
-    indexById.set(id, models.length)
-    models.push({ id, label: labelFromModelId(id), ...(isDefault ? { isDefault: true } : {}) })
+    byId.set(id, model)
   }
-  return models
+  return [...byId.values()]
 }
