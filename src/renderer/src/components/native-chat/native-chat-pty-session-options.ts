@@ -77,6 +77,23 @@ export function createNativeChatPtySessionOptions(
   if (args.reportedValues && applyNativeChatReportedSessionOptions(record, args.reportedValues)) {
     writeNativeChatSessionOptionCache(args.scopeKey, record)
   }
+  /** Why: an authoritative probe proved this id gone; left tracked it would re-enter
+   *  the picker via re-injection and re-persist the fatal `-m` on any later option
+   *  write, undoing the settings retirement. */
+  const untrackRetiredModel = (): boolean => {
+    if (!catalog.discoveredModelsAreAuthoritative || !modelsAreDiscovered) {
+      return false
+    }
+    const trackedId = typeof record.model?.value === 'string' ? record.model.value : null
+    if (!trackedId || models.some((model) => model.id === trackedId)) {
+      return false
+    }
+    clearNativeChatSessionModel(record)
+    return true
+  }
+  if (untrackRetiredModel()) {
+    writeNativeChatSessionOptionCache(args.scopeKey, record)
+  }
   const activeModels = (): CatalogModel[] => withTrackedNativeChatModel(catalog, models, record)
   let snapshot = buildNativeChatSessionOptionSnapshot({
     catalog,
@@ -124,9 +141,25 @@ export function createNativeChatPtySessionOptions(
   // model for every agent without a CLI default, keeping the ungated flag false there.
   const modelIsUnverifiedDefault = (): boolean => record.model === undefined && !modelsAreDiscovered
 
+  /** Every persist path — picker applies and typed commands — funnels through this
+   *  gate: a typed `/model <retired>` or a probe landing mid-pick can still hand it
+   *  an id the authoritative list lacks, and adopting that as the launch default
+   *  would recreate the fatal `-m` the retirement just cleared. */
+  const persistSelection: PersistSelection | undefined = args.persistSelection
+    ? (selection) =>
+        args.persistSelection?.({
+          ...selection,
+          modelIsUnverifiedDefault:
+            selection.modelIsUnverifiedDefault ||
+            (modelsAreDiscovered &&
+              catalog.discoveredModelsAreAuthoritative === true &&
+              !models.some((model) => model.id === selection.modelId))
+        })
+    : undefined
+
   const persist = (modelId: string | null, optionId: string, value: SessionOptionValue): void => {
     if (modelId) {
-      void args.persistSelection?.({
+      void persistSelection?.({
         modelId,
         optionId,
         value,
@@ -142,7 +175,7 @@ export function createNativeChatPtySessionOptions(
     getRecord: () => record,
     dispatchCommand: args.dispatchCommand,
     onAgentPicker: args.onAgentPicker,
-    persistSelection: args.persistSelection,
+    persistSelection,
     onDraftValuesChanged: args.onDraftValuesChanged,
     publish,
     clearModelTruth,
@@ -181,6 +214,7 @@ export function createNativeChatPtySessionOptions(
     replaceModels: (nextModels) => {
       models = [...nextModels]
       modelsAreDiscovered = true
+      untrackRetiredModel()
       publish()
     }
   }

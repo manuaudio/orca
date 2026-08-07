@@ -93,6 +93,16 @@ describe('retirePersistedModelMissingFromDiscovery', () => {
     expect(mocks.storeState.updateSettings).not.toHaveBeenCalled()
   })
 
+  it('re-reads live settings at apply so a pick landing mid-retirement survives', async () => {
+    // Regression: retirement captured the settings snapshot before its write was
+    // queued, so a pick landing in between was clobbered back to the old shape.
+    persist({ grok: { model: 'grok-build' } })
+    const pending = retirePersistedModelMissingFromDiscovery('grok', models('grok-5'))
+    persist({ grok: { model: 'grok-5' } })
+    await pending
+    expect(mocks.storeState.updateSettings).not.toHaveBeenCalled()
+  })
+
   it('retires only the named agent, leaving other agents’ picks intact', async () => {
     persist({ grok: { model: 'grok-build' }, claude: { model: 'opus' } })
     await retirePersistedModelMissingFromDiscovery('grok', models('grok-4.5'))

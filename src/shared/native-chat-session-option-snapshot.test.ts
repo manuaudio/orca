@@ -175,8 +175,9 @@ describe('buildNativeChatSessionOptionSnapshot', () => {
     })
 
     it('re-injects a grok seed model an authoritative discovery dropped', () => {
-      // This asserts the limitation, not a fix: dropping `grok-4.5` from the
-      // offered list does not un-pick it, so the fatal launch is still reachable.
+      // Reconciliation alone never un-picks: the PTY surface untracks a retired id
+      // when an authoritative discovery lands (see native-chat-pty-session-options),
+      // while this shared layer keeps a pre-discovery persisted pick labelled.
       const record = createNativeChatSessionOptionRecord('grok')
       record.model = { value: 'grok-4.5', source: 'dispatched' }
       const discovered = mergeDiscoveredAuthoritativeModels(GROK_SESSION_OPTION_CATALOG.models, [

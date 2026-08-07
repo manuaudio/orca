@@ -8,7 +8,10 @@ import {
   clearNativeChatSessionOptionModel,
   updateNativeChatSessionOptionDefaults
 } from '../../../../shared/native-chat-session-option-defaults'
-import type { SessionOptionDescriptor } from '../../../../shared/native-chat-session-options'
+import type {
+  PersistedNativeChatSessionOptions,
+  SessionOptionDescriptor
+} from '../../../../shared/native-chat-session-options'
 import { useAppStore } from '../../store'
 import {
   createNativeChatPtySessionOptions,
@@ -31,6 +34,31 @@ const subscribeEmpty = (): (() => void) => () => {}
 const getEmptySnapshot = (): SessionOptionDescriptor[] => EMPTY_SNAPSHOT
 
 /**
+ * Why: every nativeChatSessionOptions writer — a pick from any pane, a probe
+ * retirement — serializes on this one chain and re-reads live settings at apply
+ * time. updateSettings shallow-merges the whole object, so an interleaved write
+ * from a snapshot captured earlier would silently clobber a concurrent pick.
+ * The update runs against the settled base and may return null to skip writing.
+ */
+let settingsWrite: Promise<unknown> = Promise.resolve()
+function enqueueSessionOptionSettingsWrite(
+  update: (
+    base: PersistedNativeChatSessionOptions | undefined
+  ) => PersistedNativeChatSessionOptions | null
+): Promise<void> {
+  const write = settingsWrite
+    .catch(() => undefined)
+    .then(() => {
+      const next = update(useAppStore.getState().settings?.nativeChatSessionOptions)
+      return next
+        ? useAppStore.getState().updateSettings({ nativeChatSessionOptions: next })
+        : undefined
+    })
+  settingsWrite = write
+  return write
+}
+
+/**
  * Why: the picker drops a retired model, but the persisted default is what launches
  * become `-m <id>` — every launch site reads it, including the ones that never show
  * the picker. Left alone the id is invisible and still fatal, so an authoritative
@@ -47,13 +75,11 @@ export async function retirePersistedModelMissingFromDiscovery(
   if (models.length === 0) {
     return
   }
-  const persisted = useAppStore.getState().settings?.nativeChatSessionOptions
-  const modelId = persisted?.[agent]?.model
-  if (typeof modelId !== 'string' || !modelId || models.some((model) => model.id === modelId)) {
-    return
-  }
-  await useAppStore.getState().updateSettings({
-    nativeChatSessionOptions: clearNativeChatSessionOptionModel(persisted, agent)
+  await enqueueSessionOptionSettingsWrite((persisted) => {
+    const modelId = persisted?.[agent]?.model
+    return typeof modelId === 'string' && modelId && !models.some((model) => model.id === modelId)
+      ? clearNativeChatSessionOptionModel(persisted, agent)
+      : null
   })
 }
 
@@ -94,7 +120,6 @@ export function useNativeChatSessionOptions(args: {
             discoveredModels ?? undefined
           )
         : null
-    let settingsWrite = Promise.resolve()
     return createNativeChatPtySessionOptions({
       agent,
       scopeKey,
@@ -107,29 +132,17 @@ export function useNativeChatSessionOptions(args: {
       reportedValues,
       dispatchCommand,
       onAgentPicker,
-      persistSelection: async ({ modelId, optionId, value, modelIsUnverifiedDefault }) => {
-        // Why: read the live persisted defaults at write time (after any prior
-        // write in this chain settles) and merge only this selection onto them,
-        // rather than a baseline captured once at surface creation. A frozen
-        // baseline would let a second same-agent pane's write be clobbered,
-        // since updateSettings shallow-merges nativeChatSessionOptions. Chaining
-        // still keeps rapid consecutive picks in selection order.
-        settingsWrite = settingsWrite
-          .catch(() => undefined)
-          .then(() => {
-            const base = useAppStore.getState().settings?.nativeChatSessionOptions
-            const next = updateNativeChatSessionOptionDefaults({
-              persisted: base,
-              agent,
-              modelId,
-              optionId,
-              value,
-              modelIsUnverifiedDefault
-            })
-            return useAppStore.getState().updateSettings({ nativeChatSessionOptions: next })
+      persistSelection: ({ modelId, optionId, value, modelIsUnverifiedDefault }) =>
+        enqueueSessionOptionSettingsWrite((persisted) =>
+          updateNativeChatSessionOptionDefaults({
+            persisted,
+            agent,
+            modelId,
+            optionId,
+            value,
+            modelIsUnverifiedDefault
           })
-        await settingsWrite
-      }
+        )
     })
   }, [
     agent,

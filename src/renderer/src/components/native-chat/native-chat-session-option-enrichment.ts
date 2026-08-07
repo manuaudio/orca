@@ -5,6 +5,11 @@ import {
   mergeDiscoveredAuthoritativeModels,
   type CatalogModel
 } from '../../../../shared/agent-session-option-catalog'
+import { resolveNativeChatSessionOptionDefaults } from '../../../../shared/native-chat-session-option-defaults'
+import type {
+  PersistedNativeChatSessionOptions,
+  SessionOptionValue
+} from '../../../../shared/native-chat-session-options'
 
 type CatalogEnrichmentEntry = {
   state: 'idle' | 'pending' | 'settled'
@@ -13,6 +18,22 @@ type CatalogEnrichmentEntry = {
 }
 
 const enrichmentByAgentHost = new Map<string, CatalogEnrichmentEntry>()
+
+// Host keys are unbounded (one per SSH host), so cap the process-lifetime cache.
+// An evicted host simply re-probes on its next visit; live listeners are kept.
+const MAX_ENRICHMENT_ENTRIES = 64
+
+function evictSettledEnrichmentEntry(): void {
+  if (enrichmentByAgentHost.size < MAX_ENRICHMENT_ENTRIES) {
+    return
+  }
+  for (const [key, entry] of enrichmentByAgentHost) {
+    if (entry.state === 'settled' && entry.listeners.size === 0) {
+      enrichmentByAgentHost.delete(key)
+      return
+    }
+  }
+}
 
 function enrichmentKey(agent: AgentType, hostKey: string): string {
   return JSON.stringify([agent, hostKey])
@@ -42,6 +63,35 @@ export function subscribeNativeChatEnrichedModels(
   return () => entry.listeners.delete(listener)
 }
 
+/**
+ * Why: every launch site turns the persisted model into a verbatim `-m` flag,
+ * fatal for an authoritative-catalog agent once the id retires. Settings
+ * retirement is asynchronous and only runs after a chat pane mounts, so a
+ * launch must not trust a persisted id no settled probe still lists. The id
+ * must be missing from *every* probed host — hosts can see different models,
+ * and launching without `-m` is safe while dropping a valid pick is not.
+ * With no probe data at all the pick is honored: only discovery proves staleness.
+ */
+export function resolveNativeChatLaunchSessionOptions(
+  persisted: PersistedNativeChatSessionOptions | null | undefined,
+  agent: AgentType
+): Record<string, SessionOptionValue> | undefined {
+  const values = resolveNativeChatSessionOptionDefaults(persisted, agent)
+  if (!values || !getAgentSessionOptionCatalog(agent)?.discoveredModelsAreAuthoritative) {
+    return values
+  }
+  let probed = false
+  for (const [key, entry] of enrichmentByAgentHost) {
+    if (entry.models && (JSON.parse(key) as [AgentType])[0] === agent) {
+      probed = true
+      if (entry.models.some((model) => model.id === values.model)) {
+        return values
+      }
+    }
+  }
+  return probed ? undefined : values
+}
+
 export function ensureNativeChatModelEnrichment(args: {
   agent: AgentType
   hostKey: string
@@ -62,6 +112,9 @@ export function ensureNativeChatModelEnrichment(args: {
     listeners: new Set()
   }
   entry.state = 'pending'
+  if (!existing) {
+    evictSettledEnrichmentEntry()
+  }
   enrichmentByAgentHost.set(key, entry)
 
   // Why: model discovery must never delay rendering or launching; the seed is
