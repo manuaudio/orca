@@ -1,6 +1,7 @@
-// Snapshots one worktree's tabs, browser pages and simulator tabs into the
-// shapes the three Cmd+J engines search. Pure: takes state, no store subscription.
+// Builds one worktree's tabs, browser pages and simulator tabs into the shapes
+// the three Cmd+J engines search.
 
+import type { Repo, Worktree } from '../../../../shared/types'
 import { buildSearchableBrowserPages } from '@/lib/browser-palette-page-entries'
 import type { SearchableBrowserPage } from '@/lib/browser-palette-search'
 import {
@@ -19,6 +20,32 @@ export type OpenTabSearchEntries = {
   simulatorTabs: readonly SearchableSimulatorTab[]
 }
 
+export type OpenTabSearchEntryState = Pick<
+  AppState,
+  | 'activeBrowserTabId'
+  | 'activeFileId'
+  | 'activeFileIdByWorktree'
+  | 'activeGroupIdByWorktree'
+  | 'activeTabId'
+  | 'activeTabIdByWorktree'
+  | 'activeTabType'
+  | 'activeTabTypeByWorktree'
+  | 'activeWorktreeId'
+  | 'agentStatusByPaneKey'
+  | 'browserPagesByWorkspace'
+  | 'browserTabsByWorktree'
+  | 'groupsByWorktree'
+  | 'openFiles'
+  | 'retainedAgentsByPaneKey'
+  | 'sleepingAgentSessionsByPaneKey'
+  | 'tabsByWorktree'
+  | 'unifiedTabsByWorktree'
+> & {
+  generatedTitlesEnabled: boolean
+  repo: Pick<Repo, 'displayName' | 'id'> | null
+  worktree: Worktree | null
+}
+
 const EMPTY_ENTRIES: OpenTabSearchEntries = {
   workspaceTabs: [],
   browserPages: [],
@@ -27,17 +54,45 @@ const EMPTY_ENTRIES: OpenTabSearchEntries = {
 
 // No group id: every tab of the worktree is offered, including the one the
 // column already shows, matching how Cmd+J lists the tab you are on.
-export function buildOpenTabSearchEntries(
+export function selectOpenTabSearchEntryState(
   state: AppState,
   worktreeId: string
-): OpenTabSearchEntries {
+): OpenTabSearchEntryState {
   // Why getKnownWorktreeById: folder workspaces are absent from worktreesByRepo.
-  const worktree = state.getKnownWorktreeById(worktreeId)
-  if (!worktree) {
+  const worktree = state.getKnownWorktreeById(worktreeId) ?? null
+  return {
+    activeBrowserTabId: state.activeBrowserTabId,
+    activeFileId: state.activeFileId,
+    activeFileIdByWorktree: state.activeFileIdByWorktree,
+    activeGroupIdByWorktree: state.activeGroupIdByWorktree,
+    activeTabId: state.activeTabId,
+    activeTabIdByWorktree: state.activeTabIdByWorktree,
+    activeTabType: state.activeTabType,
+    activeTabTypeByWorktree: state.activeTabTypeByWorktree,
+    activeWorktreeId: state.activeWorktreeId,
+    agentStatusByPaneKey: state.agentStatusByPaneKey,
+    browserPagesByWorkspace: state.browserPagesByWorkspace,
+    browserTabsByWorktree: state.browserTabsByWorktree,
+    generatedTitlesEnabled: state.settings?.tabAutoGenerateTitle === true,
+    groupsByWorktree: state.groupsByWorktree,
+    openFiles: state.openFiles,
+    repo: worktree
+      ? (state.repos.find((candidate) => candidate.id === worktree.repoId) ?? null)
+      : null,
+    retainedAgentsByPaneKey: state.retainedAgentsByPaneKey,
+    sleepingAgentSessionsByPaneKey: state.sleepingAgentSessionsByPaneKey,
+    tabsByWorktree: state.tabsByWorktree,
+    unifiedTabsByWorktree: state.unifiedTabsByWorktree,
+    worktree
+  }
+}
+
+export function buildOpenTabSearchEntries(state: OpenTabSearchEntryState): OpenTabSearchEntries {
+  if (!state.worktree) {
     return EMPTY_ENTRIES
   }
 
-  const repo = state.repos.find((candidate) => candidate.id === worktree.repoId)
+  const { repo, worktree } = state
   const worktrees = [worktree]
   const scope = {
     worktrees,
@@ -63,7 +118,7 @@ export function buildOpenTabSearchEntries(
       activeFileId: state.activeFileId,
       activeFileIdByWorktree: state.activeFileIdByWorktree,
       activeTabTypeByWorktree: state.activeTabTypeByWorktree,
-      generatedTitlesEnabled: state.settings?.tabAutoGenerateTitle === true
+      generatedTitlesEnabled: state.generatedTitlesEnabled
     }),
     browserPages: buildSearchableBrowserPages({
       ...scope,

@@ -61,7 +61,10 @@ export function activateOpenTabSearchResult(result: OpenTabSearchResult): OpenTa
   }
 
   if (result.source === 'simulator') {
-    const activation = activateSimulatorTabPaletteResult(result)
+    const activation = activateSimulatorTabPaletteResult({
+      tabId: result.tabId,
+      worktreeId: result.worktreeId
+    })
     if (activation.status === 'failed') {
       return failed(
         activation.reason,
@@ -74,7 +77,13 @@ export function activateOpenTabSearchResult(result: OpenTabSearchResult): OpenTa
     return { status: 'activated', focus: () => focusTerminalTabSurface(activation.tabId) }
   }
 
-  const activation = activateWorkspaceTabPaletteResult(result)
+  const activation = activateWorkspaceTabPaletteResult({
+    contentType: result.contentType,
+    entityId: result.entityId,
+    groupId: result.groupId,
+    tabId: result.tabId,
+    worktreeId: result.worktreeId
+  })
   if (activation.status === 'failed') {
     return failed(
       activation.reason,

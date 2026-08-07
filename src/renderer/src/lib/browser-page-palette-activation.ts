@@ -1,5 +1,4 @@
 import { useAppStore } from '@/store'
-import { findWorktreeById } from '@/store/slices/worktree-helpers'
 import { isBlankBrowserUrl } from './browser-palette-search'
 import { activateAndRevealWorktree } from './worktree-activation'
 
@@ -29,7 +28,7 @@ export function activateBrowserPagePaletteResult({
   const workspace = (initialState.browserTabsByWorktree[worktreeId] ?? []).find(
     (candidate) => candidate.id === workspaceId
   )
-  const worktree = findWorktreeById(initialState.worktreesByRepo, worktreeId)
+  const worktree = initialState.getKnownWorktreeById(worktreeId)
   if (!page || !workspace || !worktree) {
     return { status: 'failed', reason: 'missing-page' }
   }

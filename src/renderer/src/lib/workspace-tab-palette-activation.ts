@@ -6,7 +6,6 @@ import {
 } from '@/runtime/web-runtime-session'
 import { useAppStore } from '@/store'
 import type { AppState } from '@/store/types'
-import { findWorktreeById } from '@/store/slices/worktree-helpers'
 import { activateAndRevealWorktree } from './worktree-activation'
 import type { WorkspaceTabPaletteSearchResult } from './workspace-tab-palette-search'
 
@@ -29,24 +28,21 @@ export type WorkspaceTabPaletteActivationTarget = Pick<
 type WorkspaceTabPaletteActivationState = Pick<
   AppState,
   | 'activateTab'
-  | 'activeGroupIdByWorktree'
   | 'focusGroup'
+  | 'getKnownWorktreeById'
   | 'groupsByWorktree'
   | 'openFiles'
-  | 'repos'
-  | 'settings'
   | 'setActiveFile'
   | 'setActiveTab'
   | 'setActiveTabType'
   | 'unifiedTabsByWorktree'
-  | 'worktreesByRepo'
 >
 
 function validateTarget(
   state: WorkspaceTabPaletteActivationState,
   result: WorkspaceTabPaletteActivationTarget
 ): WorkspaceTabPaletteActivationFailure | null {
-  if (!findWorktreeById(state.worktreesByRepo, result.worktreeId)) {
+  if (!state.getKnownWorktreeById(result.worktreeId)) {
     return 'missing-worktree'
   }
   const group = (state.groupsByWorktree[result.worktreeId] ?? []).find(

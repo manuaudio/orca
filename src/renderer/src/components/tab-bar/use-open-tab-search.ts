@@ -1,8 +1,9 @@
 // Feeds the open-tab search module from the store for a single worktree.
 
 import { useDeferredValue, useMemo } from 'react'
+import { useShallow } from 'zustand/react/shallow'
 import { useAppStore } from '@/store'
-import { buildOpenTabSearchEntries } from './open-tab-search-entries'
+import { buildOpenTabSearchEntries, selectOpenTabSearchEntryState } from './open-tab-search-entries'
 import { searchOpenTabs, type OpenTabSearchResult } from './open-tab-search'
 
 const EMPTY_RESULTS: OpenTabSearchResult[] = []
@@ -18,13 +19,11 @@ export function useOpenTabSearch({
   query,
   worktreeId
 }: UseOpenTabSearchOptions): OpenTabSearchResult[] {
-  // Why a snapshot taken at open instead of a store subscription: the menu is
-  // short-lived, so the tab set cannot meaningfully change while it is up, and
-  // subscribing would re-render a closed menu on unrelated store churn.
-  const entries = useMemo(
-    () => (enabled ? buildOpenTabSearchEntries(useAppStore.getState(), worktreeId) : null),
-    [enabled, worktreeId]
+  // Why null while disabled: a closed menu stays stable across store churn.
+  const state = useAppStore(
+    useShallow((store) => (enabled ? selectOpenTabSearchEntryState(store, worktreeId) : null))
   )
+  const entries = useMemo(() => (state ? buildOpenTabSearchEntries(state) : null), [state])
   const deferredQuery = useDeferredValue(query)
 
   return useMemo(

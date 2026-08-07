@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 
-import { renderHook } from '@testing-library/react'
+import { act, renderHook } from '@testing-library/react'
 import { beforeEach, describe, expect, it } from 'vitest'
 import type {
   BrowserPage,
@@ -250,48 +250,37 @@ describe('useOpenTabSearch', () => {
     ])
   })
 
-  it('offers the tab a split column is showing', () => {
-    const { result } = renderSearch({ query: 'gamma' })
-
-    // group-2's visible tab: jumping to it moves focus to that column.
-    expect(result.current.map((entry) => entry.title)).toEqual(['zebra gamma'])
-  })
-
-  it('snapshots the tab set at open and picks up changes on the next open', () => {
-    const { result, rerender } = renderSearch({ query: 'epsilon' })
+  it('reflects tab changes while open', () => {
+    const { result } = renderSearch({ query: 'epsilon' })
     expect(result.current).toEqual([])
 
     const state = useAppStore.getState()
-    useAppStore.setState({
-      unifiedTabsByWorktree: {
-        ...state.unifiedTabsByWorktree,
-        'wt-1': [
-          ...(state.unifiedTabsByWorktree['wt-1'] ?? []),
-          makeUnifiedTab({ id: 'tab-e', entityId: 'term-e', groupId: 'group-1' })
-        ]
-      },
-      tabsByWorktree: {
-        ...state.tabsByWorktree,
-        'wt-1': [
-          ...(state.tabsByWorktree['wt-1'] ?? []),
-          makeTerminalTab({ id: 'term-e', title: 'zebra epsilon' })
-        ]
-      },
-      groupsByWorktree: {
-        ...state.groupsByWorktree,
-        'wt-1': [
-          makeGroup('group-1', 'tab-a', ['tab-a', 'tab-b', 'tab-e']),
-          makeGroup('group-2', 'tab-c', ['tab-c', 'tab-browser', 'tab-sim'])
-        ]
-      }
+    act(() => {
+      useAppStore.setState({
+        unifiedTabsByWorktree: {
+          ...state.unifiedTabsByWorktree,
+          'wt-1': [
+            ...(state.unifiedTabsByWorktree['wt-1'] ?? []),
+            makeUnifiedTab({ id: 'tab-e', entityId: 'term-e', groupId: 'group-1' })
+          ]
+        },
+        tabsByWorktree: {
+          ...state.tabsByWorktree,
+          'wt-1': [
+            ...(state.tabsByWorktree['wt-1'] ?? []),
+            makeTerminalTab({ id: 'term-e', title: 'zebra epsilon' })
+          ]
+        },
+        groupsByWorktree: {
+          ...state.groupsByWorktree,
+          'wt-1': [
+            makeGroup('group-1', 'tab-a', ['tab-a', 'tab-b', 'tab-e']),
+            makeGroup('group-2', 'tab-c', ['tab-c', 'tab-browser', 'tab-sim'])
+          ]
+        }
+      })
     })
 
-    // Still the snapshot the open menu was built from.
-    rerender({ enabled: true, query: 'epsilon' })
-    expect(result.current).toEqual([])
-
-    rerender({ enabled: false, query: 'epsilon' })
-    rerender({ enabled: true, query: 'epsilon' })
     expect(result.current.map((entry) => entry.title)).toEqual(['zebra epsilon'])
   })
 

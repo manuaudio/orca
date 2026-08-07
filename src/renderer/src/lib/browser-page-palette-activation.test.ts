@@ -1,8 +1,16 @@
 // @vitest-environment happy-dom
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { BrowserPage, BrowserWorkspace, Tab, TabGroup, Worktree } from '../../../shared/types'
+import type {
+  BrowserPage,
+  BrowserWorkspace,
+  FolderWorkspace,
+  Tab,
+  TabGroup,
+  Worktree
+} from '../../../shared/types'
 import { ORCA_BROWSER_BLANK_URL } from '../../../shared/constants'
+import { folderWorkspaceKey } from '../../../shared/workspace-scope'
 import { useAppStore } from '@/store'
 import type { AppState } from '@/store/types'
 
@@ -35,6 +43,25 @@ function makeWorktree(overrides: Partial<Worktree> = {}): Worktree {
     isPinned: false,
     sortOrder: 0,
     lastActivityAt: 0,
+    ...overrides
+  }
+}
+
+function makeFolderWorkspace(overrides: Partial<FolderWorkspace> = {}): FolderWorkspace {
+  return {
+    id: 'folder-1',
+    projectGroupId: 'project-1',
+    name: 'Remote folder',
+    folderPath: '/workspace/folder-1',
+    linkedTask: null,
+    comment: '',
+    isArchived: false,
+    isUnread: false,
+    isPinned: false,
+    sortOrder: 0,
+    lastActivityAt: 0,
+    createdAt: 0,
+    updatedAt: 0,
     ...overrides
   }
 }
@@ -148,6 +175,23 @@ describe('activateBrowserPagePaletteResult', () => {
     activateBrowserPagePaletteResult(target)
 
     expect(mocks.activateAndRevealWorktree).toHaveBeenCalledWith('wt-1', {
+      executionHostId: 'ssh:host-1'
+    })
+  })
+
+  it('activates pages in remote folder workspaces', () => {
+    const worktreeId = folderWorkspaceKey('folder-1')
+    seedStore({
+      worktreesByRepo: {},
+      folderWorkspaces: [makeFolderWorkspace({ executionHostId: 'ssh:host-1' })],
+      browserTabsByWorktree: { [worktreeId]: [makeWorkspace({ worktreeId })] },
+      browserPagesByWorkspace: { 'ws-1': [makePage({ worktreeId })] }
+    })
+
+    expect(
+      activateBrowserPagePaletteResult({ pageId: 'page-1', workspaceId: 'ws-1', worktreeId })
+    ).toMatchObject({ status: 'activated' })
+    expect(mocks.activateAndRevealWorktree).toHaveBeenCalledWith(worktreeId, {
       executionHostId: 'ssh:host-1'
     })
   })

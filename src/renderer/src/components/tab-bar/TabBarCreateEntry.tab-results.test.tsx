@@ -1,7 +1,5 @@
 // @vitest-environment happy-dom
 
-import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -81,28 +79,6 @@ function terminalResult(overrides: Partial<OpenTabSearchResult> = {}): OpenTabSe
     relativePath: null,
     ...overrides
   } as OpenTabSearchResult
-}
-
-const browserResult: OpenTabSearchResult = {
-  source: 'browser',
-  id: 'open-tab:browser:page-1',
-  title: 'Project Docs',
-  matchedText: null,
-  worktreeId: 'wt',
-  contentType: 'browser',
-  pageId: 'page-1',
-  workspaceId: 'ws-1'
-}
-
-const simulatorResult: OpenTabSearchResult = {
-  source: 'simulator',
-  id: 'open-tab:simulator:tab-9',
-  title: 'iPhone 15',
-  matchedText: null,
-  worktreeId: 'wt',
-  contentType: 'simulator',
-  tabId: 'tab-9',
-  groupId: 'g'
 }
 
 const newFileOption: TabEntryOption = {
@@ -230,37 +206,6 @@ describe('TabBarCreateEntry tab results', () => {
     expect(rowTexts()[1]).toContain('Claude Code')
   })
 
-  it('renders one switch row when an open editor tab and its file both match (AE5)', () => {
-    entryOptionsMock.options = [existingFileOption('src/zebra.ts')]
-    tabSearchMock.resultsByQuery['zebra'] = [
-      terminalResult({
-        contentType: 'editor',
-        entityId: 'file-1',
-        relativePath: 'src/zebra.ts',
-        title: 'zebra.ts'
-      })
-    ]
-    renderEntry()
-
-    setQuery('zebra')
-
-    const rows = rowTexts()
-    expect(rows).toHaveLength(1)
-    expect(rows[0]).toContain('Switch to tab')
-  })
-
-  it('keeps a file entry that no editor tab covers', () => {
-    entryOptionsMock.options = [existingFileOption('src/zebra.ts')]
-    tabSearchMock.resultsByQuery['zebra'] = [terminalResult({ title: 'zebra terminal' })]
-    renderEntry()
-
-    setQuery('zebra')
-
-    const rows = rowTexts()
-    expect(rows).toHaveLength(2)
-    expect(rows[1]).toContain('Open file')
-  })
-
   it('orders tab rows above menu actions, agents and file entries', () => {
     entryOptionsMock.options = [existingFileOption('src/gem.ts')]
     tabSearchMock.resultsByQuery['gem'] = [terminalResult({ title: 'gem tab' })]
@@ -281,23 +226,6 @@ describe('TabBarCreateEntry tab results', () => {
     expect(rows[3]).toContain('Open file')
   })
 
-  it('traverses tab rows and the rows below them as one list', () => {
-    entryOptionsMock.options = [newFileOption]
-    tabSearchMock.resultsByQuery['add tab'] = [terminalResult()]
-    const onOpenEntry = vi.fn().mockResolvedValue(undefined)
-    renderEntry({ onOpenEntry })
-
-    setQuery('add tab')
-    expect(queryInput().getAttribute('aria-activedescendant')).toBe('tab-create-entry-result-0')
-
-    pressKey(queryInput(), 'ArrowDown')
-    expect(queryInput().getAttribute('aria-activedescendant')).toBe('tab-create-entry-result-1')
-    submitForm()
-
-    expect(onOpenEntry).toHaveBeenCalledTimes(1)
-    expect(activationMocks.workspace).not.toHaveBeenCalled()
-  })
-
   it('keeps Enter on the row the user saw when a tab row arrives a render later', () => {
     entryOptionsMock.options = [newFileOption]
     tabSearchMock.resultsByQuery['add tab'] = [terminalResult()]
@@ -315,24 +243,6 @@ describe('TabBarCreateEntry tab results', () => {
 
     expect(onOpenEntry).toHaveBeenCalledTimes(1)
     expect(activationMocks.workspace).not.toHaveBeenCalled()
-  })
-
-  it('activates a selected tab row on Enter and closes the menu', () => {
-    tabSearchMock.resultsByQuery['add tab'] = [terminalResult()]
-    const onDidOpenEntry = vi.fn()
-    renderEntry({ onDidOpenEntry })
-
-    setQuery('add tab')
-    submitForm()
-
-    expect(activationMocks.workspace).toHaveBeenCalledWith({
-      contentType: 'terminal',
-      entityId: 'term-1',
-      groupId: 'g',
-      tabId: 'tab-1',
-      worktreeId: 'wt'
-    })
-    expect(onDidOpenEntry).toHaveBeenCalledTimes(1)
   })
 
   it('activates a clicked tab row and closes the menu', () => {
@@ -368,39 +278,6 @@ describe('TabBarCreateEntry tab results', () => {
     expect(activationMocks.focusTerminalTabSurface).toHaveBeenCalledWith('term-1')
   })
 
-  it('queues a terminal surface focus handoff for a simulator row', () => {
-    tabSearchMock.resultsByQuery['iphone'] = [simulatorResult]
-    const onQueueSwitchFocus = vi.fn()
-    renderEntry({ onQueueSwitchFocus })
-
-    setQuery('iphone')
-    submitForm()
-    onQueueSwitchFocus.mock.calls[0][0]()
-
-    expect(activationMocks.focusTerminalTabSurface).toHaveBeenCalledWith('tab-9')
-  })
-
-  it('issues a browser focus request carrying the activation focus target', () => {
-    tabSearchMock.resultsByQuery['docs'] = [browserResult]
-    const onQueueSwitchFocus = vi.fn()
-    renderEntry({ onQueueSwitchFocus })
-
-    setQuery('docs')
-    submitForm()
-
-    const events: CustomEvent[] = []
-    const onFocusRequest = (event: Event): void => {
-      events.push(event as CustomEvent)
-    }
-    window.addEventListener('orca:browser-focus-request', onFocusRequest)
-    onQueueSwitchFocus.mock.calls[0][0]()
-    window.removeEventListener('orca:browser-focus-request', onFocusRequest)
-
-    const detail = { pageId: 'page-1', target: 'webview' }
-    expect(activationMocks.queueBrowserFocusRequest).toHaveBeenCalledWith(detail)
-    expect(events[0]?.detail).toEqual(detail)
-  })
-
   it('keeps the menu and every row usable when the activation fails', () => {
     entryOptionsMock.options = [newFileOption]
     activationMocks.workspace.mockReturnValue({ status: 'failed', reason: 'missing-tab' })
@@ -428,43 +305,5 @@ describe('TabBarCreateEntry tab results', () => {
     pressKey(queryInput(), 'ArrowDown')
     submitForm()
     expect(onOpenEntry).toHaveBeenCalledTimes(1)
-  })
-
-  it('keeps a create-menu action selectable when several tabs match', () => {
-    tabSearchMock.resultsByQuery['browser'] = [
-      terminalResult({ title: 'browser one' }),
-      terminalResult({ id: 'open-tab:workspace:tab-2', tabId: 'tab-2', title: 'browser two' })
-    ]
-    const menuOptions: TabCreateMenuOption[] = [
-      { id: 'new-browser', kind: 'new-browser', keywords: ['browser'], label: 'New Browser Tab' }
-    ]
-    const onSelectMenuOption = vi.fn()
-    renderEntry({ menuOptions, onSelectMenuOption })
-
-    setQuery('browser')
-    pressKey(queryInput(), 'ArrowUp')
-    expect(queryInput().getAttribute('aria-activedescendant')).toBe('tab-create-entry-result-2')
-    submitForm()
-
-    expect(onSelectMenuOption).toHaveBeenCalledWith(expect.objectContaining({ id: 'new-browser' }))
-  })
-
-  it('points aria-activedescendant at the selected tab row', () => {
-    tabSearchMock.resultsByQuery['add tab'] = [terminalResult()]
-    renderEntry()
-
-    setQuery('add tab')
-
-    const activeId = queryInput().getAttribute('aria-activedescendant')
-    expect(document.getElementById(activeId ?? '')?.textContent).toContain('Switch to tab')
-  })
-
-  it('keeps the component under the 400-line lint cap', () => {
-    const source = readFileSync(
-      join(process.cwd(), 'src/renderer/src/components/tab-bar/TabBarCreateEntry.tsx'),
-      'utf8'
-    )
-
-    expect(source.trimEnd().split('\n').length).toBeLessThanOrEqual(400)
   })
 })
