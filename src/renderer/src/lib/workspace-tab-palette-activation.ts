@@ -20,6 +20,12 @@ export type WorkspaceTabPaletteActivationResult =
   | { status: 'activated' }
   | { status: 'failed'; reason: WorkspaceTabPaletteActivationFailure }
 
+// Why: callers outside Cmd+J hold only the identifiers, not a full search result.
+export type WorkspaceTabPaletteActivationTarget = Pick<
+  WorkspaceTabPaletteSearchResult,
+  'contentType' | 'entityId' | 'groupId' | 'tabId' | 'worktreeId'
+>
+
 type WorkspaceTabPaletteActivationState = Pick<
   AppState,
   | 'activateTab'
@@ -38,7 +44,7 @@ type WorkspaceTabPaletteActivationState = Pick<
 
 function validateTarget(
   state: WorkspaceTabPaletteActivationState,
-  result: WorkspaceTabPaletteSearchResult
+  result: WorkspaceTabPaletteActivationTarget
 ): WorkspaceTabPaletteActivationFailure | null {
   if (!findWorktreeById(state.worktreesByRepo, result.worktreeId)) {
     return 'missing-worktree'
@@ -72,7 +78,7 @@ function validateTarget(
 }
 
 export function activateWorkspaceTabPaletteResult(
-  result: WorkspaceTabPaletteSearchResult
+  result: WorkspaceTabPaletteActivationTarget
 ): WorkspaceTabPaletteActivationResult {
   const initialState = useAppStore.getState()
   const initialFailure = validateTarget(initialState, result)
