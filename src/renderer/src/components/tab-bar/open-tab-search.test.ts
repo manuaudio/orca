@@ -276,7 +276,9 @@ describe('searchOpenTabs ranking', () => {
 })
 
 describe('searchOpenTabs filtering', () => {
-  it('never returns the active tab, page or emulator', () => {
+  // The focused tab is only unreachable from its own column; hiding it here would
+  // make it unreachable from every other column's "+" too.
+  it('still returns the focused tab, page and emulator', () => {
     const results = search({
       query: 'zebra',
       workspaceTabs: [makeWorkspaceTab({ id: 'tab-1', title: 'Zebra tab', isCurrentTab: true })],
@@ -286,7 +288,11 @@ describe('searchOpenTabs filtering', () => {
       ]
     })
 
-    expect(results).toEqual([])
+    expect(results.map((result) => result.id)).toEqual([
+      'open-tab:workspace:tab-1',
+      'open-tab:browser:page-1',
+      'open-tab:simulator:sim-1'
+    ])
   })
 
   it('returns nothing for a query that only matches the worktree name', () => {

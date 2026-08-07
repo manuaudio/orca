@@ -128,8 +128,10 @@ function rankWorkspaceTabs(
   query: string
 ): RankedResult[] {
   const entriesByTabId = new Map(entries.map((entry) => [entry.tab.id, entry]))
+  // Why no isCurrentTab filter here: Cmd+J lists the tab you are on, and hiding it
+  // made the omnibox look broken when you searched for the tab on screen.
   return searchWorkspaceTabs([...entries], query)
-    .filter((result) => !result.isCurrentTab && !isNameOnlyMatch(result))
+    .filter((result) => !isNameOnlyMatch(result))
     .map((result) => ({
       tier: getTier(result),
       sourceRank: SOURCE_RANK.workspace,
@@ -154,7 +156,7 @@ function rankBrowserPages(
   query: string
 ): RankedResult[] {
   return searchBrowserPages([...entries], query)
-    .filter((result) => !result.isCurrentPage && !isNameOnlyMatch(result))
+    .filter((result) => !isNameOnlyMatch(result))
     .map((result) => ({
       tier: getTier(result),
       sourceRank: SOURCE_RANK.browser,
@@ -177,7 +179,7 @@ function rankSimulatorTabs(
   query: string
 ): RankedResult[] {
   return searchSimulatorTabs([...entries], query)
-    .filter((result) => !result.isCurrentTab && !isNameOnlyMatch(result))
+    .filter((result) => !isNameOnlyMatch(result))
     .map((result) => ({
       tier: getTier(result),
       sourceRank: SOURCE_RANK.simulator,

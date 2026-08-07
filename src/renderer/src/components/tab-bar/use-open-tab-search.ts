@@ -75,9 +75,10 @@ const DISABLED_SLICE: OpenTabSearchStoreSlice = {
   generatedTitlesEnabled: false
 }
 
+// No group id: every tab of the worktree is offered, including the one the
+// column already shows, matching how Cmd+J lists the tab you are on.
 export type UseOpenTabSearchOptions = {
   enabled: boolean
-  groupId: string
   query: string
   worktreeId: string
 }
@@ -117,18 +118,8 @@ function selectOpenTabSearchSlice(
   }
 }
 
-// The tab the "+" column is showing. R4 cannot rely on the engines' current-tab
-// flags alone: those track the focused group, and "+" can be clicked in another.
-function getVisibleColumnTabId(
-  groups: readonly { id: string; activeTabId: string | null }[],
-  groupId: string
-): string | null {
-  return groups.find((group) => group.id === groupId)?.activeTabId ?? null
-}
-
 export function useOpenTabSearch({
   enabled,
-  groupId,
   query,
   worktreeId
 }: UseOpenTabSearchOptions): OpenTabSearchResult[] {
@@ -146,17 +137,6 @@ export function useOpenTabSearch({
     () => new Map(worktrees.map((worktree, index) => [worktree.id, index])),
     [worktrees]
   )
-
-  const visibleTabId = useMemo(
-    () => getVisibleColumnTabId(slice.groupsByWorktree[worktreeId] ?? [], groupId),
-    [groupId, slice.groupsByWorktree, worktreeId]
-  )
-  const visibleBrowserWorkspaceId = useMemo(() => {
-    const visibleTab = (slice.unifiedTabsByWorktree[worktreeId] ?? []).find(
-      (tab) => tab.id === visibleTabId
-    )
-    return visibleTab?.contentType === 'browser' ? visibleTab.entityId : null
-  }, [slice.unifiedTabsByWorktree, visibleTabId, worktreeId])
 
   const workspaceTabs = useMemo(
     () =>
@@ -182,7 +162,7 @@ export function useOpenTabSearch({
             activeFileIdByWorktree: slice.activeFileIdByWorktree,
             activeTabTypeByWorktree: slice.activeTabTypeByWorktree,
             generatedTitlesEnabled: slice.generatedTitlesEnabled
-          }).filter((entry) => entry.tab.id !== visibleTabId),
+          }),
     [
       enabled,
       repoMap,
@@ -202,7 +182,6 @@ export function useOpenTabSearch({
       slice.sleepingAgentSessionsByPaneKey,
       slice.tabsByWorktree,
       slice.unifiedTabsByWorktree,
-      visibleTabId,
       worktreeOrder,
       worktrees
     ]
@@ -221,11 +200,7 @@ export function useOpenTabSearch({
             activeBrowserTabId: slice.activeBrowserTabId,
             activeWorktreeId: slice.activeWorktreeId,
             activeTabType: slice.activeTabType
-          }).filter(
-            (entry) =>
-              entry.workspace.id !== visibleBrowserWorkspaceId ||
-              entry.page.id !== entry.workspace.activePageId
-          ),
+          }),
     [
       enabled,
       repoMap,
@@ -234,7 +209,6 @@ export function useOpenTabSearch({
       slice.activeWorktreeId,
       slice.browserPagesByWorkspace,
       slice.browserTabsByWorktree,
-      visibleBrowserWorkspaceId,
       worktreeOrder,
       worktrees
     ]
@@ -253,7 +227,7 @@ export function useOpenTabSearch({
             groupsByWorktree: slice.groupsByWorktree,
             activeWorktreeId: slice.activeWorktreeId,
             activeTabType: slice.activeTabType
-          }).filter((entry) => entry.tab.id !== visibleTabId),
+          }),
     [
       enabled,
       repoMap,
@@ -262,7 +236,6 @@ export function useOpenTabSearch({
       slice.activeWorktreeId,
       slice.groupsByWorktree,
       slice.unifiedTabsByWorktree,
-      visibleTabId,
       worktreeOrder,
       worktrees
     ]

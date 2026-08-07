@@ -84,7 +84,7 @@ export default function TabBarCreateEntry({
   const [lastMenuOpen, setLastMenuOpen] = useState(menuOpen)
   const inputRef = useRef<HTMLInputElement>(null)
   const fileList = useRuntimeFileListForWorktree({ enabled: menuOpen, worktreeId })
-  const tabResults = useOpenTabSearch({ enabled: menuOpen, groupId, query, worktreeId })
+  const tabResults = useOpenTabSearch({ enabled: menuOpen, query, worktreeId })
   const shouldResolveAbsolutePaths = menuOpen && isTabEntryAbsolutePathLike(query.trim())
   const allowAbsolutePathsSelector = useMemo(
     () =>

@@ -219,6 +219,11 @@ function seedStore(overrides: Partial<AppState> = {}): void {
       browserPagesByWorkspace: { 'ws-1': [browserPage] },
       activeGroupIdByWorktree: { 'wt-1': 'group-1', 'wt-2': 'group-3' },
       activeWorktreeId: 'wt-1',
+      // Focus really sits on tab-a, so the engines mark it isCurrentTab.
+      activeTabType: 'terminal',
+      activeTabTypeByWorktree: { 'wt-1': 'terminal' },
+      activeTabId: 'term-a',
+      activeTabIdByWorktree: { 'wt-1': 'term-a' },
       settings: {
         ...initialAppState.settings,
         tabAutoGenerateTitle: false
@@ -229,14 +234,13 @@ function seedStore(overrides: Partial<AppState> = {}): void {
   )
 }
 
-function renderSearch(options: { enabled?: boolean; groupId?: string; query?: string } = {}) {
+function renderSearch(options: { enabled?: boolean; query?: string } = {}) {
   return renderHook(
-    (props: { enabled: boolean; groupId: string; query: string }) =>
+    (props: { enabled: boolean; query: string }) =>
       useOpenTabSearch({ ...props, worktreeId: 'wt-1' }),
     {
       initialProps: {
         enabled: options.enabled ?? true,
-        groupId: options.groupId ?? 'group-1',
         query: options.query ?? 'zebra'
       }
     }
@@ -270,28 +274,28 @@ describe('useOpenTabSearch', () => {
   it('includes tabs from every column of the worktree, not just the focused one', () => {
     const { result } = renderSearch()
 
-    // tab-a is group-1's visible tab; everything else across both columns matches.
+    // zebra alpha is the focused tab and still listed, ranked first by the
+    // engine's current-tab bonus, the way Cmd+J lists the tab you are on.
     expect(result.current.map((entry) => entry.title)).toEqual([
+      'zebra alpha',
       'zebra beta',
       'zebra gamma',
-      'zebra page',
-      'zebra sim'
+      'zebra page'
     ])
   })
 
-  it('excludes the visible tab of the column the menu was opened from', () => {
-    const { result } = renderSearch({ groupId: 'group-2' })
+  it('offers the tab a split column is showing', () => {
+    const { result } = renderSearch({ query: 'gamma' })
 
-    const titles = result.current.map((entry) => entry.title)
-    expect(titles).toContain('zebra alpha')
-    expect(titles).not.toContain('zebra gamma')
+    // group-2's visible tab: jumping to it moves focus to that column.
+    expect(result.current.map((entry) => entry.title)).toEqual(['zebra gamma'])
   })
 
   it('rebuilds entries when tabs change but not when only the query changes', () => {
     const { rerender } = renderSearch()
     const buildsAfterMount = mocks.buildWorkspaceTabs.mock.calls.length
 
-    rerender({ enabled: true, groupId: 'group-1', query: 'zebra b' })
+    rerender({ enabled: true, query: 'zebra b' })
     expect(mocks.buildWorkspaceTabs.mock.calls.length).toBe(buildsAfterMount)
 
     useAppStore.setState({
@@ -303,7 +307,7 @@ describe('useOpenTabSearch', () => {
         ]
       }
     })
-    rerender({ enabled: true, groupId: 'group-1', query: 'zebra b' })
+    rerender({ enabled: true, query: 'zebra b' })
     expect(mocks.buildWorkspaceTabs.mock.calls.length).toBeGreaterThan(buildsAfterMount)
   })
 
@@ -318,7 +322,7 @@ describe('useOpenTabSearch', () => {
       } as AppState['settings']
     })
 
-    const { result } = renderSearch({ groupId: 'group-2', query: 'generated' })
+    const { result } = renderSearch({ query: 'generated' })
     expect(result.current.map((entry) => entry.title)).toEqual(['zebra generated'])
 
     seedStore({
@@ -326,7 +330,7 @@ describe('useOpenTabSearch', () => {
         'wt-1': [makeTerminalTab({ id: 'term-a', title: '', generatedTitle: 'zebra generated' })]
       }
     })
-    const disabled = renderSearch({ groupId: 'group-2', query: 'generated' })
+    const disabled = renderSearch({ query: 'generated' })
     expect(disabled.result.current).toEqual([])
   })
 })
