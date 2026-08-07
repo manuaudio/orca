@@ -27,14 +27,8 @@ const EMPTY_PALETTE_INDEX_STATUS: PaletteIndexStatusSnapshot = Object.freeze({
 
 /**
  * The agent-status and pane-title maps as of *now*, for the palette's index, ordering and filters.
- *
- * Read through `useAppStore.getState()` inside a memo rather than subscribed: both maps get a new
- * identity on every agent transition and every pane-title write app-wide, and subscribing re-rendered
- * the entire palette on that churn to change nothing but the status dots. The dots subscribe
- * themselves (`PaletteLiveStatusProvider`), so what is left here only needs a snapshot — refreshed
- * when the palette opens or the tab set changes, which is the same freeze-on-open the recent row
- * order already relies on. Frozen empty constant while inactive so the memo can't hold live maps
- * alive across a close.
+ * Snapshotted rather than subscribed because the dots own that churn (`PaletteLiveStatusProvider`),
+ * leaving the index free to freeze on open.
  */
 export function selectPaletteIndexStatusSnapshot(
   s: PaletteStatusInputsState,
@@ -49,11 +43,8 @@ export function selectPaletteIndexStatusSnapshot(
   }
 }
 
-// Why: shared frozen bundle returned whenever the Cmd+J jump palette isn't active. The palette is
-// always mounted (App.tsx renders <CommandDialog open={visible}>) and stays mounted for the whole
-// session once opened, so subscribing while it's closed re-rendered the whole palette on unrelated
-// terminal chatter. A useShallow subscription keeps this same reference across that churn, so the
-// closed palette stops reacting. Frozen so the shared singleton can't be mutated.
+// Why: the palette stays mounted once opened, so a shared frozen bundle keeps `useShallow` stable
+// and stops the closed palette re-rendering on unrelated terminal chatter.
 export const EMPTY_PALETTE_STATUS_INPUTS: PaletteStatusInputs = Object.freeze({
   ptyIdsByTabId: {},
   terminalLayoutsByTabId: {},
@@ -61,15 +52,9 @@ export const EMPTY_PALETTE_STATUS_INPUTS: PaletteStatusInputs = Object.freeze({
 })
 
 /**
- * Select the status maps the jump palette subscribes to — but only while it's `active` (open, or
- * still animating closed). While inactive nothing is shown, so return a stable frozen constant that
- * a `useShallow`-wrapped subscription keeps referentially equal, skipping the re-render that would
- * otherwise fire on the always-mounted palette.
- *
- * These three are the ones that must stay live even while open: the tab set changes under the
- * palette (a tab closing has to backfill the recent section), and PTY liveness decides whether a
- * workspace counts as sleeping. The two *hot* maps are deliberately absent — see
- * `selectPaletteIndexStatusSnapshot`.
+ * The status maps the palette must keep live while `active` (open, or still animating closed): the
+ * tab set changes underneath it and PTY liveness decides whether a workspace counts as sleeping.
+ * The two hot maps are deliberately absent — see `selectPaletteIndexStatusSnapshot`.
  */
 export function selectPaletteStatusInputs(
   s: PaletteStatusInputsState,

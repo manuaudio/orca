@@ -19,13 +19,7 @@ import {
 import type { LiveAgentWorktreeStatus } from '@/lib/worktree-activity-state'
 import type { BrowserWorkspace, TerminalTab, Worktree } from '../../../../shared/types'
 
-/**
- * Owns every subscription to the two hottest maps in the app — `agentStatusByPaneKey` and
- * `runtimePaneTitlesByTabId`, both of which get a new identity on any agent transition or pane-title
- * write anywhere. The palette body deliberately reads those non-reactively, so this provider (and
- * the dots that consume it) are the only things that re-render on that churn. Everything the palette
- * passes as `children` keeps its element identity, so React skips the whole list.
- */
+/** Confines the app's hottest status subscriptions here so only the dots re-render on their churn. */
 type PaletteLiveStatus = {
   liveAgentStatusByWorktreeId: ReadonlyMap<string, LiveAgentWorktreeStatus>
   paneSources: TabPaneInputSources

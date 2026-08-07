@@ -20,8 +20,9 @@ export type PaletteRelevanceField = {
 }
 
 // Why not \w: worktree names carry CJK and accented characters, which \w excludes — every match
-// inside one would read as mid-word and sink below a Latin-only near-miss.
-const NON_WORD_CHARACTER = /[^\p{L}\p{N}]/u
+// inside one would read as mid-word and sink below a Latin-only near-miss. \p{M} keeps decomposed
+// accents (e + U+0301) attached to their base letter rather than reading as a separator.
+const NON_WORD_CHARACTER = /[^\p{L}\p{M}\p{N}]/u
 
 const POSITION_RANKS = 4
 

@@ -85,6 +85,19 @@ describe('scorePaletteRelevance', () => {
     ).toBe(scorePaletteRelevance([{ text: 'aperf', range: { start: 1, end: 5 }, tier: 0 }]))
   })
 
+  it('treats a decomposed accent before the match as mid-word, not a word boundary', () => {
+    // 'cafe' + combining acute: the char before the match is a mark, not a separator
+    const decomposed = scorePaletteRelevance([
+      { text: 'cafe\u0301perf', range: { start: 5, end: 9 }, tier: 0 }
+    ])
+    expect(decomposed).toBe(
+      scorePaletteRelevance([{ text: 'superperf', range: { start: 5, end: 9 }, tier: 0 }])
+    )
+    expect(
+      scorePaletteRelevance([{ text: 'cafe-perf', range: { start: 5, end: 9 }, tier: 0 }])
+    ).toBeLessThan(decomposed)
+  })
+
   it('returns NO_MATCH_RELEVANCE when no field matched', () => {
     expect(scorePaletteRelevance([{ text: 'perf', range: null, tier: 0 }])).toBe(NO_MATCH_RELEVANCE)
     expect(scorePaletteRelevance([])).toBe(NO_MATCH_RELEVANCE)
