@@ -236,7 +236,7 @@ artifacts require the active Orca profile to be signed in.
 ORCA artifacts share <file> --json
 ORCA artifacts update <file> --json
 ORCA artifacts unshare <file> --json
-ORCA artifacts list --json
+ORCA artifacts list [--cursor <cursor>] --json
 ORCA artifacts delete <id> --json
 ```
 
@@ -244,9 +244,10 @@ ORCA artifacts delete <id> --json
 - `share` saves the returned edit token in the active Orca profile and never includes it
   in CLI output. `update` and `unshare` look up that record by the resolved local file
   path, so use the same path and Orca profile that originally shared the file.
-- `list` returns artifacts owned by the signed-in account. `delete <id>` deletes an
-  account-owned artifact by the id returned from `list`; it does not need the original
-  local file or its edit-token record.
+- `list` returns one page of artifacts owned by the signed-in account. If JSON output has
+  `nextCursor`, pass it back with `--cursor <cursor>`. `delete <id>` deletes an account-owned
+  artifact by the id returned from `list`; it does not need the original local file or its
+  edit-token record.
 - Relative HTML assets are not uploaded. Share a self-contained HTML file or use absolute
   asset URLs.
 - If an upload exceeds the CLI transport limit, use the browser upload page as directed
