@@ -3,7 +3,6 @@
 import '@testing-library/jest-dom/vitest'
 import type { ReactNode } from 'react'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
@@ -95,7 +94,6 @@ describe('ArtifactsPage', () => {
   afterEach(cleanup)
 
   it('renders the selected artifact in-app with copy link as the primary action', async () => {
-    const user = userEvent.setup()
     render(<ArtifactsPage />)
 
     expect(await screen.findAllByText('Quarterly report')).toHaveLength(2)
@@ -109,19 +107,14 @@ describe('ArtifactsPage', () => {
     )
     const copyButton = screen.getByRole('button', { name: 'Copy link' })
     expect(copyButton).toHaveAttribute('data-variant', 'default')
-    expect(copyButton.closest('[data-slot="button-group"]')).toHaveAttribute(
-      'aria-label',
-      'Artifact actions'
-    )
-    const moreButton = screen.getByRole('button', { name: 'More artifact actions' })
-    expect(moreButton).toHaveAttribute('data-variant', 'default')
-    expect(screen.queryByRole('menuitem', { name: 'Open in browser' })).not.toBeInTheDocument()
-
-    await user.click(moreButton)
-    const openItem = screen.getByRole('menuitem', { name: 'Open in browser' })
-    expect(screen.getByRole('menuitem', { name: 'Delete artifact' })).toHaveAttribute(
+    expect(copyButton.parentElement).toHaveAttribute('aria-label', 'Artifact actions')
+    expect(screen.getByRole('button', { name: 'Open in browser' })).toHaveAttribute(
       'data-variant',
-      'destructive'
+      'ghost'
+    )
+    expect(screen.getByRole('button', { name: 'Delete artifact' })).toHaveClass(
+      'text-muted-foreground',
+      'hover:text-destructive'
     )
 
     await waitFor(() => {
@@ -136,19 +129,17 @@ describe('ArtifactsPage', () => {
     )
     expect(mocks.toastSuccess).toHaveBeenCalledWith('Artifact link copied')
 
-    await user.click(openItem)
+    fireEvent.click(screen.getByRole('button', { name: 'Open in browser' }))
     expect(mocks.openUrl).toHaveBeenCalledWith('https://share.onorca.dev/a/report-123')
   })
 
   it('shows a fallback when the desktop preview session is unavailable', async () => {
-    const user = userEvent.setup()
     mocks.resolvePartition.mockResolvedValue(null)
     render(<ArtifactsPage />)
 
     expect(await screen.findByText('Preview unavailable')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Copy link' })).toBeEnabled()
-    await user.click(screen.getByRole('button', { name: 'More artifact actions' }))
-    expect(screen.getByRole('menuitem', { name: 'Open in browser' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Open in browser' })).toBeEnabled()
   })
 
   it('closes from the header button and Escape', async () => {
