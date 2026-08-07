@@ -132,7 +132,7 @@ export function useNativeChatSessionOptions(args: {
       reportedValues,
       dispatchCommand,
       onAgentPicker,
-      persistSelection: ({ modelId, optionId, value, modelIsUnverifiedDefault }) =>
+      persistSelection: ({ modelId, optionId, value, adoptModelAsLaunchDefault }) =>
         enqueueSessionOptionSettingsWrite((persisted) =>
           updateNativeChatSessionOptionDefaults({
             persisted,
@@ -140,7 +140,7 @@ export function useNativeChatSessionOptions(args: {
             modelId,
             optionId,
             value,
-            modelIsUnverifiedDefault
+            adoptModelAsLaunchDefault
           })
         )
     })

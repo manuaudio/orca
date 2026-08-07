@@ -126,7 +126,7 @@ describe('native chat PTY session options', () => {
       optionId: 'effort',
       value: 'high',
       // Claude tracks a real model here, so this stays a persistable selection.
-      modelIsUnverifiedDefault: false
+      adoptModelAsLaunchDefault: true
     })
   })
 
@@ -744,14 +744,14 @@ describe('native chat PTY session options', () => {
       scopeKey: 'pty-1',
       mode: 'live',
       dispatchCommand: vi.fn(),
-      persistSelection: ({ modelId, optionId, value, modelIsUnverifiedDefault }) => {
+      persistSelection: ({ modelId, optionId, value, adoptModelAsLaunchDefault }) => {
         persisted = updateNativeChatSessionOptionDefaults({
           persisted,
           agent: 'grok',
           modelId,
           optionId,
           value,
-          modelIsUnverifiedDefault
+          adoptModelAsLaunchDefault
         })
       }
     })!
@@ -850,7 +850,7 @@ describe('native chat PTY session options', () => {
     // only ever move an untracked, never-selected id — never one the user picked. The
     // probe that landed mid-dispatch also confirmed grok-5, so it is safe to adopt.
     expect(persistSelection).toHaveBeenCalledWith(
-      expect.objectContaining({ modelIsUnverifiedDefault: false })
+      expect.objectContaining({ adoptModelAsLaunchDefault: true })
     )
   })
 
@@ -867,14 +867,14 @@ describe('native chat PTY session options', () => {
         { id: 'grok-4.5', label: 'Grok 4.5', isDefault: true, options: [] }
       ]),
       dispatchCommand: vi.fn(),
-      persistSelection: ({ modelId, optionId, value, modelIsUnverifiedDefault }) => {
+      persistSelection: ({ modelId, optionId, value, adoptModelAsLaunchDefault }) => {
         persisted = updateNativeChatSessionOptionDefaults({
           persisted,
           agent: 'grok',
           modelId,
           optionId,
           value,
-          modelIsUnverifiedDefault
+          adoptModelAsLaunchDefault
         })
       }
     })!

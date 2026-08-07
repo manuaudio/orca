@@ -68,7 +68,7 @@ export type AgentSessionOptionCatalog = {
    * flag, so an untouched draft may show it as selected. Off means `isDefault` stays
    * decorative: agents whose default comes from account or user config would otherwise
    * present a guess as the launch's model. Adopting this default as a persisted launch
-   * flag additionally requires a probe to confirm it — see `modelIsUnverifiedDefault`.
+   * flag additionally requires a probe to confirm it — see `adoptModelAsLaunchDefault`.
    *
    * Known gap: "no model flag" is unverified. A user `-m` in `agentArgs` launches that
    * model while the picker, which never reads launch args, still names the CLI default.

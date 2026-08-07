@@ -29,14 +29,14 @@ function createGrokSurface(args?: Partial<CreateNativeChatPtySessionOptionsArgs>
     scopeKey: 'pty-1',
     mode: 'live',
     dispatchCommand: vi.fn(),
-    persistSelection: ({ modelId, optionId, value, modelIsUnverifiedDefault }) => {
+    persistSelection: ({ modelId, optionId, value, adoptModelAsLaunchDefault }) => {
       persisted = updateNativeChatSessionOptionDefaults({
         persisted,
         agent: 'grok',
         modelId,
         optionId,
         value,
-        modelIsUnverifiedDefault
+        adoptModelAsLaunchDefault
       })
     },
     ...args

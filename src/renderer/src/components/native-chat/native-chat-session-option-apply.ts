@@ -34,12 +34,9 @@ type SessionOptionApplyContext = {
   getRecord: () => NativeChatSessionOptionRecord
   dispatchCommand: NativeChatSessionOptionDispatchCommand
   onAgentPicker?: () => void
-  persistSelection?: (args: {
-    modelId: string
-    optionId: string
-    value: SessionOptionValue
-    modelIsUnverifiedDefault?: boolean
-  }) => Promise<void> | void
+  /** The one persist entry point, shared with typed commands: it owns both the
+   *  null-model guard and whether the id may be adopted as the launch default. */
+  persist: (modelId: string | null, optionId: string, value: SessionOptionValue) => void
   onDraftValuesChanged?: (values: Record<string, SessionOptionValue>) => void
   publish: () => SessionOptionDescriptor[]
   clearModelTruth: () => void
@@ -48,9 +45,6 @@ type SessionOptionApplyContext = {
     value: SessionOptionValue,
     source: 'applied' | 'dispatched'
   ) => string | null
-  /** Read at commit: a probe settling mid-dispatch turns the seed's guess into a
-   *  confirmed id, and only then may this value's model be adopted as a launch flag. */
-  modelIsUnverifiedDefault: () => boolean
 }
 
 /** Why: ordered applies make a later absolute target observe the result of an
@@ -90,25 +84,6 @@ function trackedModelId(record: NativeChatSessionOptionRecord): string | null {
   return typeof record.model?.value === 'string' ? record.model.value : null
 }
 
-function persist(
-  ctx: SessionOptionApplyContext,
-  modelId: string | null,
-  optionId: string,
-  value: SessionOptionValue
-): void {
-  // The guard below is load-bearing, not just a null check: without a CLI default a
-  // truthy `modelId` implies a tracked model, which is what keeps the ungated flag
-  // false for every other agent. Widening it would change their persistence too.
-  if (modelId) {
-    void ctx.persistSelection?.({
-      modelId,
-      optionId,
-      value,
-      modelIsUnverifiedDefault: ctx.modelIsUnverifiedDefault()
-    })
-  }
-}
-
 function finish(
   ctx: SessionOptionApplyContext,
   args?: {
@@ -119,7 +94,7 @@ function finish(
   }
 ): SessionOptionSetResult {
   if (args && !args.skipPersist) {
-    persist(ctx, args.modelId, args.optionId, args.value)
+    ctx.persist(args.modelId, args.optionId, args.value)
   }
   const snapshot = ctx.publish()
   const record = ctx.getRecord()

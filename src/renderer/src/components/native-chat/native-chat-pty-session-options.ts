@@ -32,9 +32,8 @@ type PersistSelection = (args: {
   modelId: string
   optionId: string
   value: SessionOptionValue
-  /** The model is the seed's unprobed guess at the CLI default, so it only scopes this
-   *  value; it must not become a persisted launch flag. */
-  modelIsUnverifiedDefault?: boolean
+  /** False leaves the model scoping this value only, never a persisted launch flag. */
+  adoptModelAsLaunchDefault: boolean
 }) => Promise<void> | void
 
 export type NativeChatPtySessionOptionsSurface = SessionOptionsSurface & {
@@ -137,33 +136,24 @@ export function createNativeChatPtySessionOptions(
       resolveEffectiveNativeChatModelId(catalog, activeModels(), record)
     )
 
-  // Same load-bearing guard as the apply path: a truthy `modelId` implies a tracked
-  // model for every agent without a CLI default, keeping the ungated flag false there.
-  const modelIsUnverifiedDefault = (): boolean => record.model === undefined && !modelsAreDiscovered
+  /** The sole answer to "may this id become the persisted `-m` launch flag?", read at
+   *  persist time because a probe can settle mid-pick. Before one, `isDefault` is just
+   *  the seed's guess, so only an id the session actually tracks is evidence of
+   *  anything; after one, an authoritative list that omits the id proves it retired —
+   *  adopting either would emit an `-m` that is fatal on an account without it. */
+  const modelIsAdoptableAsLaunchDefault = (modelId: string): boolean =>
+    modelsAreDiscovered
+      ? !catalog.discoveredModelsAreAuthoritative || models.some((model) => model.id === modelId)
+      : record.model !== undefined
 
-  /** Every persist path — picker applies and typed commands — funnels through this
-   *  gate: a typed `/model <retired>` or a probe landing mid-pick can still hand it
-   *  an id the authoritative list lacks, and adopting that as the launch default
-   *  would recreate the fatal `-m` the retirement just cleared. */
-  const persistSelection: PersistSelection | undefined = args.persistSelection
-    ? (selection) =>
-        args.persistSelection?.({
-          ...selection,
-          modelIsUnverifiedDefault:
-            selection.modelIsUnverifiedDefault ||
-            (modelsAreDiscovered &&
-              catalog.discoveredModelsAreAuthoritative === true &&
-              !models.some((model) => model.id === selection.modelId))
-        })
-    : undefined
-
+  /** Every persist path — picker applies and typed commands — funnels through here. */
   const persist = (modelId: string | null, optionId: string, value: SessionOptionValue): void => {
     if (modelId) {
-      void persistSelection?.({
+      void args.persistSelection?.({
         modelId,
         optionId,
         value,
-        modelIsUnverifiedDefault: modelIsUnverifiedDefault()
+        adoptModelAsLaunchDefault: modelIsAdoptableAsLaunchDefault(modelId)
       })
     }
   }
@@ -175,12 +165,11 @@ export function createNativeChatPtySessionOptions(
     getRecord: () => record,
     dispatchCommand: args.dispatchCommand,
     onAgentPicker: args.onAgentPicker,
-    persistSelection,
+    persist,
     onDraftValuesChanged: args.onDraftValuesChanged,
     publish,
     clearModelTruth,
-    setTrackedValue,
-    modelIsUnverifiedDefault
+    setTrackedValue
   })
 
   return {

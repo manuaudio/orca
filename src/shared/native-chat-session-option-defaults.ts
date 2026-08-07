@@ -49,11 +49,11 @@ export function updateNativeChatSessionOptionDefaults(args: {
   modelId: string
   optionId: string
   value: SessionOptionValue
-  /** The model is the seed's unprobed guess at the CLI default, so it only scopes this
-   *  value — adopting it would emit `-m <guess>` on every later launch, fatal on an
-   *  account without it. A probe-confirmed default is adopted instead: the user set this
-   *  option against that model, and without a `model` no launch resolves the value at all. */
-  modelIsUnverifiedDefault?: boolean
+  /** Defaults to adopting, since without a `model` no launch resolves the value at all.
+   *  Only the picker surface, which can tell a probe-confirmed id from the seed's guess
+   *  at the CLI default, withholds it: adopting a guess would emit `-m <guess>` on every
+   *  later launch, fatal on an account without that model. */
+  adoptModelAsLaunchDefault?: boolean
 }): PersistedNativeChatSessionOptions {
   const currentAgent = args.persisted?.[args.agent]
   const currentModelValues = currentAgent?.valuesByModel?.[args.modelId] ?? {}
@@ -69,7 +69,7 @@ export function updateNativeChatSessionOptionDefaults(args: {
     ...args.persisted,
     [args.agent]: {
       ...currentAgent,
-      ...(args.modelIsUnverifiedDefault
+      ...(args.adoptModelAsLaunchDefault === false
         ? {}
         : { model: args.optionId === 'model' ? String(args.value) : args.modelId }),
       valuesByModel
