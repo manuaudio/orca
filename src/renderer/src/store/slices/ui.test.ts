@@ -1,7 +1,11 @@
 /* eslint-disable max-lines */
 import { createStore, type StoreApi } from 'zustand/vanilla'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { getDefaultUIState, getWorktreeCardModeProperties } from '../../../../shared/constants'
+import {
+  getDefaultSettings,
+  getDefaultUIState,
+  getWorktreeCardModeProperties
+} from '../../../../shared/constants'
 import type {
   GitHubWorkItem,
   JiraIssue,
@@ -3445,6 +3449,32 @@ describe('createUISlice space navigation', () => {
     store.getState().closeSpacePage()
 
     expect(store.getState().activeView).toBe('tasks')
+  })
+
+  it('returns to the originating view after closing Artifacts', () => {
+    const store = createUIStore()
+    store.setState({ settings: { ...getDefaultSettings('/tmp'), artifactsEnabled: true } })
+
+    store.getState().openTaskPage()
+    store.getState().openArtifactsPage()
+
+    expect(store.getState().activeView).toBe('artifacts')
+    expect(store.getState().previousViewBeforeArtifacts).toBe('tasks')
+
+    store.getState().closeArtifactsPage()
+
+    expect(store.getState().activeView).toBe('tasks')
+  })
+
+  it('does not open or restore Artifacts while the feature is disabled', () => {
+    const store = createUIStore()
+    store.setState({ settings: { ...getDefaultSettings('/tmp'), artifactsEnabled: false } })
+
+    store.getState().openArtifactsPage()
+    expect(store.getState().activeView).toBe('terminal')
+
+    store.getState().hydratePersistedUI(makePersistedUI({ activeView: 'artifacts' }), 'startup')
+    expect(store.getState().activeView).toBe('terminal')
   })
 })
 

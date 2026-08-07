@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => ({
   openAutomationsPage: vi.fn(),
   openActivityPage: vi.fn(),
   openMobilePage: vi.fn(),
+  openArtifactsPage: vi.fn(),
   openModal: vi.fn(),
   updateSettings: vi.fn(),
   refreshPreflightStatus: vi.fn(),
@@ -90,6 +91,7 @@ import SidebarNav, {
   shouldShowAgentDashboardButton,
   shouldShowAgentsButton,
   shouldShowAutomationsButton,
+  shouldShowArtifactsButton,
   shouldShowMobileButton,
   shouldShowSetupGuideEntry
 } from './SidebarNav'
@@ -131,6 +133,7 @@ function setSidebarState({
     openAutomationsPage: mocks.openAutomationsPage,
     openActivityPage: mocks.openActivityPage,
     openMobilePage: mocks.openMobilePage,
+    openArtifactsPage: mocks.openArtifactsPage,
     openModal: mocks.openModal,
     updateSettings: mocks.updateSettings,
     preflightStatus: { glab: { installed: false } },
@@ -294,6 +297,23 @@ describe('SidebarNav', () => {
   it('shows the Mobile entry by default for older settings', () => {
     expect(shouldShowMobileButton(null)).toBe(true)
     expect(shouldShowMobileButton({})).toBe(true)
+  })
+
+  it('keeps Artifacts hidden until it is enabled', () => {
+    expect(shouldShowArtifactsButton(null)).toBe(false)
+    expect(shouldShowArtifactsButton({})).toBe(false)
+    expect(shouldShowArtifactsButton({ artifactsEnabled: true })).toBe(true)
+  })
+
+  it('opens Artifacts from the sidebar when enabled', async () => {
+    setSidebarState({
+      settings: { ...getDefaultSettings('/tmp'), artifactsEnabled: true }
+    })
+    const container = await renderSidebarNav()
+
+    await clickButton(getButtonByText(container, 'Artifacts'))
+
+    expect(mocks.openArtifactsPage).toHaveBeenCalledOnce()
   })
 
   it('hides the Mobile entry when the sidebar setting is off', () => {

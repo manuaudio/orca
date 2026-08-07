@@ -11,6 +11,7 @@ import {
   Bot,
   Bug,
   Cable,
+  CircleUserRound,
   FlaskConical,
   GitBranch,
   Globe,
@@ -30,6 +31,7 @@ import {
   TabletSmartphone,
   SquareTerminal,
   TextCursorInput,
+  Files,
   UserCog,
   Wrench
 } from 'lucide-react'
@@ -56,6 +58,8 @@ import { getQuickCommandsPaneSearchEntries } from '@/components/settings/quick-c
 import { getBrowserPaneCombinedSearchEntries } from '@/components/settings/browser-pane-search'
 import { getNotificationsPaneSearchEntries } from '@/components/settings/notifications-search'
 import { getOrchestrationPaneSearchEntries } from '@/components/settings/orchestration-search'
+import { getArtifactsSettingsSearchEntries } from '@/components/settings/artifacts-settings-search'
+import { getOrcaAccountSettingsSearchEntries } from '@/components/settings/orca-account-settings-search'
 import { getLinearAgentSkillPaneSearchEntries } from '@/components/settings/linear-agent-skill-search'
 import {
   getRuntimeEnvironmentsSearchEntry,
@@ -205,6 +209,17 @@ export function buildSettingsNavigationMetadata({
           }
         ]
       : []),
+    {
+      id: 'artifacts',
+      title: translate('auto.hooks.useSettingsNavigationMetadata.artifactsTitle', 'Artifacts'),
+      description: translate(
+        'auto.hooks.useSettingsNavigationMetadata.artifactsDescription',
+        'Share HTML and Markdown files through your Orca account.'
+      ),
+      icon: Files,
+      searchEntries: getArtifactsSettingsSearchEntries(),
+      group: 'capabilities'
+    },
     ...(showDesktopOnlySettings
       ? [
           {
@@ -228,6 +243,21 @@ export function buildSettingsNavigationMetadata({
             icon: Mic,
             searchEntries: getVoicePaneSearchEntries(),
             group: 'capabilities'
+          }
+        ]
+      : []),
+    ...(showDesktopOnlySettings
+      ? [
+          {
+            id: 'orca-account',
+            title: translate('auto.components.settings.orcaAccount.title', 'Orca Account'),
+            description: translate(
+              'auto.components.settings.orcaAccount.description',
+              'Share work instantly and reach your desktop from Orca Mobile wherever you are.'
+            ),
+            icon: CircleUserRound,
+            searchEntries: getOrcaAccountSettingsSearchEntries(),
+            group: 'setup'
           }
         ]
       : []),

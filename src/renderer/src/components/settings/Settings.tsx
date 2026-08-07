@@ -54,6 +54,8 @@ import { ExperimentalPane } from './ExperimentalPane'
 import { PluginsSettingsSection } from './PluginsSettingsSection'
 import { AgentsPane } from './AgentsPane'
 import { OrchestrationPane } from './OrchestrationPane'
+import { ArtifactsSettingsPane } from './ArtifactsSettingsPane'
+import { OrcaAccountSettingsPane } from './OrcaAccountSettingsPane'
 import { LinearAgentSkillPane } from './LinearAgentSkillPane'
 import { AccountsPane } from './AccountsPane'
 import { StatsPane } from '../stats/StatsPane'
@@ -1294,6 +1296,20 @@ function Settings(): React.JSX.Element {
                   {isSectionMounted('orchestration') ? <OrchestrationPane /> : null}
                 </SettingsSection>
 
+                <SettingsSection
+                  id="artifacts"
+                  title={translate('auto.components.settings.artifacts.title', 'Artifacts')}
+                  description={translate(
+                    'auto.components.settings.artifacts.description',
+                    'Share files and manage public artifact links.'
+                  )}
+                  searchEntries={getSectionSearchEntries('artifacts')}
+                >
+                  {isSectionMounted('artifacts') ? (
+                    <ArtifactsSettingsPane settings={settings} updateSettings={updateSettings} />
+                  ) : null}
+                </SettingsSection>
+
                 {linearConnected ? (
                   <SettingsSection
                     id="linear"
@@ -1339,6 +1355,20 @@ function Settings(): React.JSX.Element {
                       ) : null}
                     </SettingsSection>
                   </>
+                ) : null}
+
+                {showDesktopOnlySettings ? (
+                  <SettingsSection
+                    id="orca-account"
+                    title={translate('auto.components.settings.orcaAccount.title', 'Orca Account')}
+                    description={translate(
+                      'auto.components.settings.orcaAccount.description',
+                      'Share work instantly and reach your desktop from Orca Mobile wherever you are.'
+                    )}
+                    searchEntries={getSectionSearchEntries('orca-account')}
+                  >
+                    {isSectionMounted('orca-account') ? <OrcaAccountSettingsPane /> : null}
+                  </SettingsSection>
                 ) : null}
 
                 <SettingsSection
