@@ -59,8 +59,24 @@ vi.mock('@/lib/workspace-tab-palette-activation', () => ({
 vi.mock('@/components/ui/command', async () => {
   const React = await import('react')
   return {
-    CommandDialog: ({ children, open }: { children: React.ReactNode; open?: boolean }) =>
-      open ? <div data-command-dialog="true">{children}</div> : null,
+    // Why the commandProps passthrough: cmdk resolves Enter against its `value`, so the controlled
+    // value is the only honest stand-in for "what would Enter activate" without mounting real cmdk.
+    CommandDialog: ({
+      children,
+      open,
+      commandProps
+    }: {
+      children: React.ReactNode
+      open?: boolean
+      commandProps?: { value?: string; onValueChange?: (next: string) => void }
+    }) => {
+      setCommandSelection = commandProps?.onValueChange ?? null
+      return open ? (
+        <div data-command-dialog="true" data-command-value={commandProps?.value ?? ''}>
+          {children}
+        </div>
+      ) : null
+    },
     CommandInput: ({
       value,
       onValueChange,
@@ -113,6 +129,7 @@ const initialAppState = useAppStore.getInitialState()
 let testRoot: Root
 let testContainer: HTMLDivElement
 let setCommandQuery: ((next: string) => void) | null = null
+let setCommandSelection: ((next: string) => void) | null = null
 
 function makeRepo(): Repo {
   return {
@@ -192,6 +209,7 @@ describe('WorktreeJumpPalette', () => {
   beforeEach(() => {
     globalThis.IS_REACT_ACT_ENVIRONMENT = true
     setCommandQuery = null
+    setCommandSelection = null
     useAppStore.setState(initialAppState, true)
     testContainer = document.createElement('div')
     document.body.appendChild(testContainer)
@@ -485,6 +503,13 @@ function getRenderedRowIds(): string[] {
   )
 }
 
+/** The id cmdk would activate on Enter. */
+function getCommandValue(): string {
+  return (
+    testContainer.querySelector<HTMLElement>('[data-command-dialog]')?.dataset.commandValue ?? ''
+  )
+}
+
 function getTabRowIds(): string[] {
   return [...testContainer.querySelectorAll<HTMLElement>('[data-command-item^="workspace-tab:"]')]
     .map((node) => node.dataset.commandItem ?? '')
@@ -495,6 +520,7 @@ describe('WorktreeJumpPalette recent chats & terminals', () => {
   beforeEach(() => {
     globalThis.IS_REACT_ACT_ENVIRONMENT = true
     setCommandQuery = null
+    setCommandSelection = null
     activateWorkspaceTabPaletteResult.mockClear()
     useAppStore.setState(initialAppState, true)
     testContainer = document.createElement('div')
@@ -550,6 +576,85 @@ describe('WorktreeJumpPalette recent chats & terminals', () => {
     const after = getTabRowIds()
     expect(after).toHaveLength(6)
     expect(after.some((id) => before.includes(id))).toBe(false)
+  })
+
+  it('budget-caps the worktree section when nothing fills the recent one', async () => {
+    await renderPalette({
+      worktreesByRepo: {
+        'repo-1': Array.from({ length: 14 }, (_, index) =>
+          makeWorktree(`wt-${index}`, `Spare workspace ${index}`)
+        )
+      },
+      showSleepingWorkspaces: true
+    })
+
+    // Why this shape: a filter chip that drops every open tab lands here too, and uncapping used to
+    // mount one row per workspace.
+    expect(getTabRowIds()).toEqual([])
+    expect(getWorktreeRows()).toHaveLength(10)
+    expect(testContainer.textContent).toContain('Type to see all 14 worktrees')
+  })
+
+  it('captures the order when tabs hydrate after the palette is already open', async () => {
+    const hydrated = makeRecentTabState()
+    await renderPalette({ ...hydrated, tabsByWorktree: {}, unifiedTabsByWorktree: {} })
+
+    expect(getTabRowIds()).toEqual([])
+    // Why: cmdk claims the first row it sees, which before hydration is a worktree.
+    const firstWorktreeId = getRenderedRowIds().find((id) => id.startsWith('worktree:'))
+    expect(firstWorktreeId).toBeDefined()
+    await act(async () => {
+      setCommandSelection?.(firstWorktreeId ?? '')
+    })
+    await flushEffects()
+
+    await act(async () => {
+      useAppStore.setState({
+        tabsByWorktree: hydrated.tabsByWorktree,
+        unifiedTabsByWorktree: hydrated.unifiedTabsByWorktree
+      } as Partial<AppState>)
+    })
+    await flushEffects()
+
+    const [topRowId] = getTabRowIds()
+    expect(getTabRowIds()).toHaveLength(2)
+    // Enter has to follow the rows up: ⌘1 already points at the first recent chat.
+    expect(getCommandValue()).toBe(`workspace-tab:${topRowId}`)
+
+    // Why here: an empty snapshot also left the digit chords addressing nothing until reopen.
+    await act(async () => {
+      emitCmdJRowIndexJump(0)
+    })
+    await flushEffects()
+
+    expect(activateWorkspaceTabPaletteResult).toHaveBeenCalledWith(
+      expect.objectContaining({ tabId: topRowId })
+    )
+  })
+
+  it('leaves a deliberately moved selection alone when recents land late', async () => {
+    const hydrated = makeRecentTabState()
+    await renderPalette({ ...hydrated, tabsByWorktree: {}, unifiedTabsByWorktree: {} })
+
+    const worktreeIds = getRenderedRowIds().filter((id) => id.startsWith('worktree:'))
+    expect(worktreeIds.length).toBeGreaterThan(1)
+    // Why the second row: only a selection that differs from the auto-picked head proves the user moved it.
+    const movedTo = worktreeIds[1]
+    await act(async () => {
+      setCommandSelection?.(movedTo)
+    })
+    await flushEffects()
+
+    await act(async () => {
+      useAppStore.setState({
+        tabsByWorktree: hydrated.tabsByWorktree,
+        unifiedTabsByWorktree: hydrated.unifiedTabsByWorktree
+      } as Partial<AppState>)
+    })
+    await flushEffects()
+
+    expect(getTabRowIds()).toHaveLength(2)
+    expect(getCommandValue()).toBe(movedTo)
   })
 
   it('ranks a blocked agent above a more recently visited idle tab', async () => {

@@ -1,5 +1,13 @@
 /* oxlint-disable max-lines */
-import React, { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
+import React, {
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState
+} from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -488,6 +496,10 @@ export default function WorktreeJumpPalette(): React.JSX.Element | null {
   const [query, setQuery] = useState('')
   const deferredQuery = useDeferredValue(query)
   const [selectedItemId, setSelectedItemId] = useState('')
+  // Why: the id cmdk auto-selected for the last committed list, so a late recent-order snapshot can
+  // tell "nobody has moved the highlight yet" from "the user arrowed somewhere deliberately".
+  const autoSelectedItemIdRef = useRef<string | null>(null)
+  const digitShortcutItemsRef = useRef<readonly PaletteItem[]>([])
   // Why: filters reset on close — a filter that survives reopen silently hides
   // results in a surface people open reflexively.
   const [rawFilter, setRawFilter] = useState<PaletteFilterState>(EMPTY_PALETTE_FILTER)
@@ -1025,9 +1037,12 @@ export default function WorktreeJumpPalette(): React.JSX.Element | null {
   // send ⌘3 to the wrong row; dots keep updating, positions don't.
   const [recentTabOrder, setRecentTabOrder] = useState<readonly string[]>(EMPTY_RECENT_TAB_ORDER)
   const recentTabOrderCapturedRef = useRef(false)
-  useEffect(() => {
+  // Why layout, not passive: a post-paint capture shows one frame of worktrees-only, which flashes
+  // the list, renumbers ⌘1–6 under the user, and lets cmdk latch a worktree as the Enter target.
+  useLayoutEffect(() => {
     if (!visible) {
       recentTabOrderCapturedRef.current = false
+      autoSelectedItemIdRef.current = null
       setRecentTabOrder(EMPTY_RECENT_TAB_ORDER)
       return
     }
@@ -1036,18 +1051,27 @@ export default function WorktreeJumpPalette(): React.JSX.Element | null {
     if (recentTabOrderCapturedRef.current || hasQuery || query.length > 0 || filterActive) {
       return
     }
+    const order = orderRecentWorkspaceTabs({
+      rows: recentTabRows,
+      paneSources: recentTabPaneSources,
+      now: Date.now(),
+      lastVisitedAtByWorktreeId,
+      focusedGroupTabRecency: buildFocusedGroupTabRecency(activeGroupIdByWorktree, groupsByWorktree)
+    })
+    if (order.length === 0) {
+      // Why: tabs can arrive after the palette opens (cold start, session restore, a late tab
+      // mirror). Latching an empty snapshot would leave Recent dead — and digits inert — until
+      // close+reopen, so stay unlatched; the stable empty ref keeps this a no-op re-render.
+      setRecentTabOrder(EMPTY_RECENT_TAB_ORDER)
+      return
+    }
     recentTabOrderCapturedRef.current = true
-    setRecentTabOrder(
-      orderRecentWorkspaceTabs({
-        rows: recentTabRows,
-        paneSources: recentTabPaneSources,
-        now: Date.now(),
-        lastVisitedAtByWorktreeId,
-        focusedGroupTabRecency: buildFocusedGroupTabRecency(
-          activeGroupIdByWorktree,
-          groupsByWorktree
-        )
-      })
+    setRecentTabOrder(order)
+    // Why: recents render above the worktrees, so a row auto-selected before they arrived is no
+    // longer the list head — hand Enter back to the top, matching ⌘1. Untouched selections only:
+    // a highlight the user moved themselves stays put.
+    setSelectedItemId((current) =>
+      current === '' || current === autoSelectedItemIdRef.current ? '' : current
     )
   }, [
     activeGroupIdByWorktree,
@@ -1235,16 +1259,15 @@ export default function WorktreeJumpPalette(): React.JSX.Element | null {
       ? capPaletteSection(openTabItems)
       : { visible: recentTabItems, overflowCount: 0 }
     // Why: the worktree section shrinks against the recent rows to hold the empty-query list at its
-    // pre-existing 10, so RECENT WORKTREES stays above the fold. The uncap escape hatch stays keyed
-    // on openTabItems — the snapshot lands an effect later, and gating on it would mount every
-    // worktree row for one frame only to tear it back out.
-    const worktreeCap =
-      hasQuery || openTabItems.length === 0
-        ? Infinity
-        : Math.min(
-            EMPTY_QUERY_WORKTREE_CAP,
-            Math.max(1, EMPTY_QUERY_ROW_BUDGET - openTabs.visible.length)
-          )
+    // pre-existing 10, so RECENT WORKTREES stays above the fold. An empty recent section hands the
+    // whole budget to worktrees but never uncaps — a filter chip or a tab-less session used to drop
+    // every open tab and mount one row per workspace.
+    const worktreeCap = hasQuery
+      ? Infinity
+      : Math.min(
+          openTabs.visible.length === 0 ? EMPTY_QUERY_ROW_BUDGET : EMPTY_QUERY_WORKTREE_CAP,
+          Math.max(1, EMPTY_QUERY_ROW_BUDGET - openTabs.visible.length)
+        )
     // Why: a typed query can match hundreds of rows; capping the rendered slice
     // is what keeps a one-character search from building an unbounded DOM.
     const worktrees = hasQuery
@@ -1466,6 +1489,12 @@ export default function WorktreeJumpPalette(): React.JSX.Element | null {
     () => getWorktreePaletteSelectionItemIds(listEntries),
     [listEntries]
   )
+
+  // Why passive, and why after the snapshot effect: it must record the head cmdk *had* while the
+  // last frame was on screen, so the snapshot compares against that, not against its own result.
+  useEffect(() => {
+    autoSelectedItemIdRef.current = selectionItemIds[0] ?? null
+  }, [selectionItemIds])
 
   // Why: "has any worktrees?" counts the full visible list (incl. current) so the palette never falsely claims empty. See docs/cmd-j-empty-query-ordering.md.
   const hasAnyWorktrees = visibleWorktreesForState.length > 0
@@ -1859,21 +1888,28 @@ export default function WorktreeJumpPalette(): React.JSX.Element | null {
     ]
   )
 
+  // Why a ref: the rows change on every agent tick, and re-subscribing on each one would tear down
+  // the listener mid-chord; the handler only ever needs whatever is on screen right now.
+  useLayoutEffect(() => {
+    digitShortcutItemsRef.current = paletteSections.visibleOpenTabItems
+  }, [paletteSections])
+
   // Why: main resolves the digit chord to a workspace jump; while the palette owns the keyboard it
   // means "activate recent row N" instead, addressing the snapshotted order the badges show.
   // Digits past the last badge fall through to nothing rather than switching behind the overlay.
   useEffect(() => {
-    if (!visible || hasQuery) {
+    // Why the live query too: `hasQuery` is deferred, so between the keystroke and the deferred
+    // commit a digit would still activate a recent row the user has already typed past.
+    if (!visible || hasQuery || query.length > 0) {
       return
     }
-    const shortcutItems = paletteSections.visibleOpenTabItems
     return subscribeCmdJRowIndexJump((index) => {
-      const item = shortcutItems[index]
+      const item = digitShortcutItemsRef.current[index]
       if (item) {
         handleSelectItem(item)
       }
     })
-  }, [handleSelectItem, hasQuery, paletteSections, visible])
+  }, [handleSelectItem, hasQuery, query.length, visible])
 
   const handleCreateWorktree = useCallback(() => {
     skipRestoreFocusRef.current = true
