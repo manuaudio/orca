@@ -123,77 +123,31 @@ function getEditorRelativePath(entry: SearchableWorkspaceTab | undefined): strin
   return entry.secondaryText || null
 }
 
-function rankWorkspaceTabs(
-  entries: readonly SearchableWorkspaceTab[],
-  query: string
-): RankedResult[] {
-  const entriesByTabId = new Map(entries.map((entry) => [entry.tab.id, entry]))
-  // Why no isCurrentTab filter here: Cmd+J lists the tab you are on, and hiding it
-  // made the omnibox look broken when you searched for the tab on screen.
-  return searchWorkspaceTabs([...entries], query)
-    .filter((result) => !isNameOnlyMatch(result))
-    .map((result) => ({
-      tier: getTier(result),
-      sourceRank: SOURCE_RANK.workspace,
-      score: result.score,
-      result: {
-        source: 'workspace' as const,
-        id: `open-tab:workspace:${result.tabId}`,
-        title: result.title,
-        matchedText: getMatchedText(result),
-        worktreeId: result.worktreeId,
-        contentType: result.contentType,
-        tabId: result.tabId,
-        entityId: result.entityId,
-        groupId: result.groupId,
-        relativePath: getEditorRelativePath(entriesByTabId.get(result.tabId))
-      }
-    }))
+function baseResult(
+  source: OpenTabSearchSource,
+  id: string,
+  result: EngineResult
+): OpenTabSearchResultBase {
+  return {
+    id: `open-tab:${source}:${id}`,
+    title: result.title,
+    matchedText: getMatchedText(result),
+    worktreeId: result.worktreeId
+  }
 }
 
-function rankBrowserPages(
-  entries: readonly SearchableBrowserPage[],
-  query: string
+function rank<TEngine extends EngineResult>(
+  source: OpenTabSearchSource,
+  results: readonly TEngine[],
+  toResult: (result: TEngine) => OpenTabSearchResult
 ): RankedResult[] {
-  return searchBrowserPages([...entries], query)
+  return results
     .filter((result) => !isNameOnlyMatch(result))
     .map((result) => ({
       tier: getTier(result),
-      sourceRank: SOURCE_RANK.browser,
+      sourceRank: SOURCE_RANK[source],
       score: result.score,
-      result: {
-        source: 'browser' as const,
-        id: `open-tab:browser:${result.pageId}`,
-        title: result.title,
-        matchedText: getMatchedText(result),
-        worktreeId: result.worktreeId,
-        contentType: 'browser' as const,
-        pageId: result.pageId,
-        workspaceId: result.workspaceId
-      }
-    }))
-}
-
-function rankSimulatorTabs(
-  entries: readonly SearchableSimulatorTab[],
-  query: string
-): RankedResult[] {
-  return searchSimulatorTabs([...entries], query)
-    .filter((result) => !isNameOnlyMatch(result))
-    .map((result) => ({
-      tier: getTier(result),
-      sourceRank: SOURCE_RANK.simulator,
-      score: result.score,
-      result: {
-        source: 'simulator' as const,
-        id: `open-tab:simulator:${result.tabId}`,
-        title: result.title,
-        matchedText: getMatchedText(result),
-        worktreeId: result.worktreeId,
-        contentType: 'simulator' as const,
-        tabId: result.tabId,
-        groupId: result.groupId
-      }
+      result: toResult(result)
     }))
 }
 
@@ -208,10 +162,34 @@ export function searchOpenTabs({
     return []
   }
 
+  const workspaceEntriesByTabId = new Map(workspaceTabs.map((entry) => [entry.tab.id, entry]))
+
   return [
-    ...rankWorkspaceTabs(workspaceTabs, trimmed),
-    ...rankBrowserPages(browserPages, trimmed),
-    ...rankSimulatorTabs(simulatorTabs, trimmed)
+    // Why no isCurrentTab filter: Cmd+J lists the tab you are on, and hiding it
+    // made the omnibox look broken when you searched for the tab on screen.
+    ...rank('workspace', searchWorkspaceTabs([...workspaceTabs], trimmed), (result) => ({
+      ...baseResult('workspace', result.tabId, result),
+      source: 'workspace',
+      contentType: result.contentType,
+      tabId: result.tabId,
+      entityId: result.entityId,
+      groupId: result.groupId,
+      relativePath: getEditorRelativePath(workspaceEntriesByTabId.get(result.tabId))
+    })),
+    ...rank('browser', searchBrowserPages([...browserPages], trimmed), (result) => ({
+      ...baseResult('browser', result.pageId, result),
+      source: 'browser',
+      contentType: 'browser',
+      pageId: result.pageId,
+      workspaceId: result.workspaceId
+    })),
+    ...rank('simulator', searchSimulatorTabs([...simulatorTabs], trimmed), (result) => ({
+      ...baseResult('simulator', result.tabId, result),
+      source: 'simulator',
+      contentType: 'simulator',
+      tabId: result.tabId,
+      groupId: result.groupId
+    }))
   ]
     .sort((a, b) => {
       if (a.tier !== b.tier) {

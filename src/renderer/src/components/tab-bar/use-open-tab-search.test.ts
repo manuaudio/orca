@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 
 import { renderHook } from '@testing-library/react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 import type {
   BrowserPage,
   BrowserWorkspace,
@@ -12,36 +12,8 @@ import type {
   TerminalTab,
   Worktree
 } from '../../../../shared/types'
-import type * as BrowserPalettePageEntries from '@/lib/browser-palette-page-entries'
-import type * as SimulatorPaletteSearch from '@/lib/simulator-palette-search'
-import type * as WorkspaceTabPaletteSearch from '@/lib/workspace-tab-palette-search'
 import { useAppStore } from '@/store'
 import type { AppState } from '@/store/types'
-
-const mocks = vi.hoisted(() => ({
-  buildWorkspaceTabs: vi.fn(),
-  buildBrowserPages: vi.fn(),
-  buildSimulatorTabs: vi.fn()
-}))
-
-vi.mock('@/lib/workspace-tab-palette-search', async (importOriginal) => {
-  const actual = await importOriginal<typeof WorkspaceTabPaletteSearch>()
-  mocks.buildWorkspaceTabs.mockImplementation(actual.buildSearchableWorkspaceTabs)
-  return { ...actual, buildSearchableWorkspaceTabs: mocks.buildWorkspaceTabs }
-})
-
-vi.mock('@/lib/browser-palette-page-entries', async (importOriginal) => {
-  const actual = await importOriginal<typeof BrowserPalettePageEntries>()
-  mocks.buildBrowserPages.mockImplementation(actual.buildSearchableBrowserPages)
-  return { ...actual, buildSearchableBrowserPages: mocks.buildBrowserPages }
-})
-
-vi.mock('@/lib/simulator-palette-search', async (importOriginal) => {
-  const actual = await importOriginal<typeof SimulatorPaletteSearch>()
-  mocks.buildSimulatorTabs.mockImplementation(actual.buildSearchableSimulatorTabs)
-  return { ...actual, buildSearchableSimulatorTabs: mocks.buildSimulatorTabs }
-})
-
 import { useOpenTabSearch } from './use-open-tab-search'
 
 const initialAppState = useAppStore.getInitialState()
@@ -249,19 +221,13 @@ function renderSearch(options: { enabled?: boolean; query?: string } = {}) {
 
 describe('useOpenTabSearch', () => {
   beforeEach(() => {
-    mocks.buildWorkspaceTabs.mockClear()
-    mocks.buildBrowserPages.mockClear()
-    mocks.buildSimulatorTabs.mockClear()
     seedStore()
   })
 
-  it('returns no results and builds no entries while disabled', () => {
+  it('returns no results while disabled', () => {
     const { result } = renderSearch({ enabled: false })
 
     expect(result.current).toEqual([])
-    expect(mocks.buildWorkspaceTabs).not.toHaveBeenCalled()
-    expect(mocks.buildBrowserPages).not.toHaveBeenCalled()
-    expect(mocks.buildSimulatorTabs).not.toHaveBeenCalled()
   })
 
   it('returns only tabs from the requested worktree', () => {
@@ -291,24 +257,42 @@ describe('useOpenTabSearch', () => {
     expect(result.current.map((entry) => entry.title)).toEqual(['zebra gamma'])
   })
 
-  it('rebuilds entries when tabs change but not when only the query changes', () => {
-    const { rerender } = renderSearch()
-    const buildsAfterMount = mocks.buildWorkspaceTabs.mock.calls.length
+  it('snapshots the tab set at open and picks up changes on the next open', () => {
+    const { result, rerender } = renderSearch({ query: 'epsilon' })
+    expect(result.current).toEqual([])
 
-    rerender({ enabled: true, query: 'zebra b' })
-    expect(mocks.buildWorkspaceTabs.mock.calls.length).toBe(buildsAfterMount)
-
+    const state = useAppStore.getState()
     useAppStore.setState({
-      tabsByWorktree: {
-        ...useAppStore.getState().tabsByWorktree,
+      unifiedTabsByWorktree: {
+        ...state.unifiedTabsByWorktree,
         'wt-1': [
-          ...(useAppStore.getState().tabsByWorktree['wt-1'] ?? []),
+          ...(state.unifiedTabsByWorktree['wt-1'] ?? []),
+          makeUnifiedTab({ id: 'tab-e', entityId: 'term-e', groupId: 'group-1' })
+        ]
+      },
+      tabsByWorktree: {
+        ...state.tabsByWorktree,
+        'wt-1': [
+          ...(state.tabsByWorktree['wt-1'] ?? []),
           makeTerminalTab({ id: 'term-e', title: 'zebra epsilon' })
+        ]
+      },
+      groupsByWorktree: {
+        ...state.groupsByWorktree,
+        'wt-1': [
+          makeGroup('group-1', 'tab-a', ['tab-a', 'tab-b', 'tab-e']),
+          makeGroup('group-2', 'tab-c', ['tab-c', 'tab-browser', 'tab-sim'])
         ]
       }
     })
-    rerender({ enabled: true, query: 'zebra b' })
-    expect(mocks.buildWorkspaceTabs.mock.calls.length).toBeGreaterThan(buildsAfterMount)
+
+    // Still the snapshot the open menu was built from.
+    rerender({ enabled: true, query: 'epsilon' })
+    expect(result.current).toEqual([])
+
+    rerender({ enabled: false, query: 'epsilon' })
+    rerender({ enabled: true, query: 'epsilon' })
+    expect(result.current.map((entry) => entry.title)).toEqual(['zebra epsilon'])
   })
 
   it('reflects the generated-titles setting in matched titles', () => {
