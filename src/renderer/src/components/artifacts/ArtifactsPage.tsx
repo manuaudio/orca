@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Files, Loader2, RefreshCw, X } from 'lucide-react'
 import type { ArtifactCloudOperation, ArtifactListItem } from '../../../../shared/artifacts'
+import type { OrcaProfileAuthStatus } from '../../../../shared/orca-profiles'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useConfirmationDialog } from '@/components/confirmation-dialog-context'
@@ -11,6 +12,12 @@ import { ArtifactCollection } from './ArtifactCollection'
 
 const LOCAL_RUNTIME = { kind: 'local' } as const
 const EMPTY_ARTIFACTS: readonly ArtifactListItem[] = []
+
+function artifactAccountIdentity(authStatus: OrcaProfileAuthStatus | null): string | null {
+  return authStatus?.state === 'connected'
+    ? `${authStatus.activeProfileId}:${authStatus.cloud?.userId ?? ''}:${authStatus.cloud?.cloudProfileId ?? ''}`
+    : null
+}
 
 export default function ArtifactsPage(): React.JSX.Element {
   const closePage = useAppStore((state) => state.closeArtifactsPage)
@@ -29,11 +36,7 @@ export default function ArtifactsPage(): React.JSX.Element {
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null)
   const loadSequence = useRef(0)
   const signedIn = authStatus?.state === 'connected'
-  const accountIdentity = signedIn
-    ? `${authStatus.activeProfileId}:${authStatus.cloud?.userId ?? ''}:${authStatus.cloud?.cloudProfileId ?? ''}`
-    : null
-  const accountIdentityRef = useRef(accountIdentity)
-  accountIdentityRef.current = accountIdentity
+  const accountIdentity = artifactAccountIdentity(authStatus)
   const artifacts =
     artifactState.identity === accountIdentity ? artifactState.items : EMPTY_ARTIFACTS
   const deletingId = deleting?.identity === accountIdentity ? deleting.slug : null
@@ -119,6 +122,8 @@ export default function ArtifactsPage(): React.JSX.Element {
     if (!requestedIdentity) {
       return
     }
+    const requestedAccountIsCurrent = (): boolean =>
+      artifactAccountIdentity(useAppStore.getState().orcaProfileAuthStatus) === requestedIdentity
     const name = item.artifact.title || item.artifact.originalFileName || item.artifact.slug
     const accepted = await confirm({
       title: translate('auto.components.artifacts.ArtifactsPage.deleteTitle', 'Delete artifact?'),
@@ -130,7 +135,7 @@ export default function ArtifactsPage(): React.JSX.Element {
       confirmLabel: translate('auto.components.artifacts.ArtifactsPage.delete', 'Delete'),
       confirmVariant: 'destructive'
     })
-    if (!accepted || accountIdentityRef.current !== requestedIdentity) {
+    if (!accepted || !requestedAccountIsCurrent()) {
       return
     }
     setDeleting({ identity: requestedIdentity, slug: item.artifact.slug })
@@ -140,7 +145,7 @@ export default function ArtifactsPage(): React.JSX.Element {
         'artifacts.delete',
         { id: item.artifact.slug }
       )
-      if (accountIdentityRef.current !== requestedIdentity) {
+      if (!requestedAccountIsCurrent()) {
         return
       }
       if (result.status !== 'ok') {
@@ -157,7 +162,7 @@ export default function ArtifactsPage(): React.JSX.Element {
       )
     } catch (deleteError) {
       console.error('Failed to delete artifact:', deleteError)
-      if (accountIdentityRef.current === requestedIdentity) {
+      if (requestedAccountIsCurrent()) {
         setError(
           translate(
             'auto.components.artifacts.ArtifactsPage.deleteFailed',

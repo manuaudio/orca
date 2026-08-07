@@ -43,15 +43,21 @@ vi.mock('@/runtime/runtime-rpc-client', () => ({
 }))
 
 vi.mock('@/store', () => ({
-  useAppStore: (selector: (state: Record<string, unknown>) => unknown) =>
-    selector({
-      closeArtifactsPage: mocks.closePage,
-      connectCurrentOrcaProfile: mocks.connect,
-      orcaProfileAuthStatus: mocks.authStatus,
-      orcaProfileConnecting: false,
-      refreshCurrentOrcaProfileAuth: mocks.refreshAuth
-    })
+  useAppStore: Object.assign(
+    (selector: (state: Record<string, unknown>) => unknown) => selector(storeState()),
+    { getState: storeState }
+  )
 }))
+
+function storeState(): Record<string, unknown> {
+  return {
+    closeArtifactsPage: mocks.closePage,
+    connectCurrentOrcaProfile: mocks.connect,
+    orcaProfileAuthStatus: mocks.authStatus,
+    orcaProfileConnecting: false,
+    refreshCurrentOrcaProfileAuth: mocks.refreshAuth
+  }
+}
 
 import ArtifactsPage from './ArtifactsPage'
 
