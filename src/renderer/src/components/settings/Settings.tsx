@@ -1442,6 +1442,7 @@ function Settings(): React.JSX.Element {
                 <SettingsSection
                   id="artifacts"
                   title={translate('auto.components.settings.artifacts.title', 'Artifacts')}
+                  badge="Beta"
                   description={translate(
                     'auto.components.settings.artifacts.description',
                     'Share files and manage public artifact links.'

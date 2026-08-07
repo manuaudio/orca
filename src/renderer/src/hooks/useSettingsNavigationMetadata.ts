@@ -342,7 +342,8 @@ export function buildSettingsNavigationMetadata({
       ),
       icon: Files,
       searchEntries: getArtifactsSettingsSearchEntries(),
-      group: 'workflows'
+      group: 'workflows',
+      badge: translate('auto.hooks.useSettingsNavigationMetadata.40d80bad8a', 'Beta')
     },
     {
       id: 'git',

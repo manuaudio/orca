@@ -95,6 +95,7 @@ describe('settings navigation metadata', () => {
     expect(automations?.group).toBe('workflows')
     expect(automations?.searchEntries[0]?.title).toBe('Show Automations Button')
     expect(artifacts?.group).toBe('workflows')
+    expect(artifacts?.badge).toBe('Beta')
     expect(workflowIds.slice(0, 2)).toEqual(['automations', 'artifacts'])
   })
 
