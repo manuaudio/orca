@@ -6,6 +6,12 @@ import { translate } from '@/i18n/i18n'
 
 type PreviewState = 'loading' | 'ready' | 'unavailable'
 
+function artifactPreviewUrl(shareUrl: string): string {
+  const url = new URL(shareUrl)
+  url.searchParams.set('embed', '1')
+  return url.toString()
+}
+
 function attachArtifactWebview({
   container,
   partition,
@@ -28,6 +34,7 @@ function attachArtifactWebview({
     'aria-label',
     translate('auto.components.artifacts.preview', 'Artifact preview')
   )
+  webview.style.display = 'flex'
   webview.style.width = '100%'
   webview.style.height = '100%'
   webview.style.border = 'none'
@@ -36,7 +43,7 @@ function attachArtifactWebview({
   webview.addEventListener('did-stop-loading', onLoadStopped)
   webview.addEventListener('did-fail-load', onLoadFailed)
   container.appendChild(webview)
-  webview.setAttribute('src', shareUrl)
+  webview.setAttribute('src', artifactPreviewUrl(shareUrl))
 
   return () => {
     webview.removeEventListener('did-start-loading', onLoadStarted)
@@ -102,7 +109,7 @@ export function ArtifactPreview({ shareUrl }: { shareUrl: string }): React.JSX.E
   }, [shareUrl])
 
   return (
-    <div className="relative min-h-64 flex-1 overflow-hidden bg-white" ref={containerRef}>
+    <div className="relative flex min-h-0 flex-1 overflow-hidden bg-white" ref={containerRef}>
       {state === 'loading' ? (
         <div className="absolute inset-0 z-10 flex items-center justify-center bg-background">
           <Loader2 className="size-5 animate-spin text-muted-foreground" />

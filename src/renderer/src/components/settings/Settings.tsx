@@ -55,6 +55,7 @@ import { PluginsSettingsSection } from './PluginsSettingsSection'
 import { AgentsPane } from './AgentsPane'
 import { OrchestrationPane } from './OrchestrationPane'
 import { ArtifactsSettingsPane } from './ArtifactsSettingsPane'
+import { AutomationsSettingsPane } from './AutomationsSettingsPane'
 import { OrcaAccountSettingsPane } from './OrcaAccountSettingsPane'
 import { LinearAgentSkillPane } from './LinearAgentSkillPane'
 import { AccountsPane } from './AccountsPane'
@@ -1437,6 +1438,20 @@ function Settings(): React.JSX.Element {
                     {isSectionMounted('mobile') ? <MobileSettingsPane /> : null}
                   </SettingsSection>
                 ) : null}
+
+                <SettingsSection
+                  id="automations"
+                  title={translate('auto.components.settings.automations.title', 'Automations')}
+                  description={translate(
+                    'auto.components.settings.automations.description',
+                    'Schedule agent work and choose whether Automations appears in the sidebar.'
+                  )}
+                  searchEntries={getSectionSearchEntries('automations')}
+                >
+                  {isSectionMounted('automations') ? (
+                    <AutomationsSettingsPane settings={settings} updateSettings={updateSettings} />
+                  ) : null}
+                </SettingsSection>
 
                 <SettingsSection
                   id="git"

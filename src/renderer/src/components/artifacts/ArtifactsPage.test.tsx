@@ -107,16 +107,23 @@ describe('ArtifactsPage', () => {
     )
     const copyButton = screen.getByRole('button', { name: 'Copy link' })
     expect(copyButton).toHaveAttribute('data-variant', 'default')
+    expect(copyButton.closest('[data-slot="button-group"]')).toHaveAttribute(
+      'aria-label',
+      'Artifact actions'
+    )
     expect(screen.getByRole('button', { name: 'Open in browser' })).toHaveAttribute(
       'data-variant',
-      'outline'
+      'secondary'
     )
-    expect(screen.getByRole('button', { name: 'Delete artifact' })).toHaveClass('text-destructive')
+    expect(screen.getByRole('button', { name: 'Delete artifact' })).toHaveClass(
+      'text-muted-foreground',
+      'hover:text-destructive'
+    )
 
     await waitFor(() => {
       const preview = document.querySelector('webview[aria-label="Artifact preview"]')
       expect(preview).toHaveAttribute('partition', 'persist:orca-default')
-      expect(preview).toHaveAttribute('src', 'https://share.onorca.dev/a/report-123')
+      expect(preview).toHaveAttribute('src', 'https://share.onorca.dev/a/report-123?embed=1')
     })
 
     fireEvent.click(copyButton)

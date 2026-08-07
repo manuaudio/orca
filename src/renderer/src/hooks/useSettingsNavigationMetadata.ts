@@ -11,6 +11,7 @@ import {
   Bot,
   Bug,
   Cable,
+  CalendarClock,
   CircleUserRound,
   FlaskConical,
   GitBranch,
@@ -59,6 +60,7 @@ import { getBrowserPaneCombinedSearchEntries } from '@/components/settings/brows
 import { getNotificationsPaneSearchEntries } from '@/components/settings/notifications-search'
 import { getOrchestrationPaneSearchEntries } from '@/components/settings/orchestration-search'
 import { getArtifactsSettingsSearchEntries } from '@/components/settings/artifacts-settings-search'
+import { getAutomationsSettingsSearchEntries } from '@/components/settings/automations-settings-search'
 import { getOrcaAccountSettingsSearchEntries } from '@/components/settings/orca-account-settings-search'
 import { getLinearAgentSkillPaneSearchEntries } from '@/components/settings/linear-agent-skill-search'
 import {
@@ -331,6 +333,17 @@ export function buildSettingsNavigationMetadata({
           }
         ]
       : []),
+    {
+      id: 'automations',
+      title: translate('auto.hooks.useSettingsNavigationMetadata.automationsTitle', 'Automations'),
+      description: translate(
+        'auto.hooks.useSettingsNavigationMetadata.automationsDescription',
+        'Schedule agent work and choose whether Automations appears in the sidebar.'
+      ),
+      icon: CalendarClock,
+      searchEntries: getAutomationsSettingsSearchEntries(),
+      group: 'workflows'
+    },
     {
       id: 'git',
       title: translate(

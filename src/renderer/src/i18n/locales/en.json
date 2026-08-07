@@ -883,7 +883,9 @@
         "pluginsDescription": "Install and manage experimental Orca plugins.",
         "tasksDescription": "Connect providers, install the Linear skill, and choose what appears in Tasks.",
         "artifactsTitle": "Artifacts",
-        "artifactsDescription": "Share HTML and Markdown files through your Orca account."
+        "artifactsDescription": "Share HTML and Markdown files through your Orca account.",
+        "automationsTitle": "Automations",
+        "automationsDescription": "Schedule agent work and choose whether Automations appears in the sidebar."
       },
       "useAppMenuPaste": {
         "pasteTooLarge": "Paste is too large."
@@ -10408,6 +10410,22 @@
           "artifactsDescription": "Publish HTML and Markdown files, then manage every shared link from Orca.",
           "relayTitle": "Orca Relay",
           "relayDescription": "Connect Orca Mobile to this desktop across cellular or any Wi-Fi."
+        },
+        "automations": {
+          "showButton": "Show Automations Button",
+          "showButtonDescription": "Show the Automations shortcut in the sidebar.",
+          "howItWorksTitle": "How Automations work",
+          "howItWorksDescription": "Schedule agent work once, then let Orca create each run and keep its results together.",
+          "defineStepTitle": "Describe the work",
+          "defineStepDescription": "Choose a project, agent, prompt, and schedule.",
+          "runStepTitle": "Orca starts each run",
+          "runStepDescription": "The selected agent gets a fresh workspace when the schedule is due.",
+          "reviewStepTitle": "Review the results",
+          "reviewStepDescription": "Inspect recent runs and continue the work whenever you need to.",
+          "openAutomations": "Open Automations",
+          "openAutomationsDescription": "Create schedules and inspect recent runs.",
+          "title": "Automations",
+          "description": "Schedule agent work and choose whether Automations appears in the sidebar."
         }
       },
       "right": {
@@ -14886,7 +14904,8 @@
         "openInBrowser": "Open in browser",
         "preview": "Artifact preview",
         "previewUnavailable": "Preview unavailable",
-        "previewUnavailableDescription": "Open this artifact in your browser to view it."
+        "previewUnavailableDescription": "Open this artifact in your browser to view it.",
+        "actions": "Artifact actions"
       }
     },
     "i18n": {

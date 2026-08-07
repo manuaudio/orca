@@ -38,8 +38,8 @@ export function ArtifactCollection({
   deleteArtifact: (item: ArtifactListItem) => void
 }): React.JSX.Element {
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-md border border-border/50 bg-muted/20 md:flex-row">
-      <div className="max-h-48 shrink-0 overflow-y-auto border-b border-border/50 scrollbar-sleek md:max-h-none md:w-72 md:border-r md:border-b-0">
+    <div className="grid min-h-0 flex-1 grid-cols-[16rem_minmax(0,1fr)] overflow-hidden rounded-md border border-border/50 bg-muted/20">
+      <aside className="min-h-0 overflow-y-auto border-r border-border/50 scrollbar-sleek">
         {artifacts.map((item) => {
           const selected = item.artifact.slug === selectedArtifact.artifact.slug
           return (
@@ -64,7 +64,7 @@ export function ArtifactCollection({
             </button>
           )
         })}
-      </div>
+      </aside>
       <section className="flex min-h-0 min-w-0 flex-1 flex-col bg-background">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/50 px-4 py-3">
           <div className="min-w-0 flex-1">

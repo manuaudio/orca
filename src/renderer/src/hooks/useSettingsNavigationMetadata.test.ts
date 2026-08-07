@@ -80,6 +80,23 @@ describe('settings navigation metadata', () => {
     expect(sections.find((section) => section.id === 'mobile')?.group).toBe('setup')
   })
 
+  it('places Automations first under Workflows with its own settings pane', () => {
+    const sections = buildSettingsNavigationMetadata({
+      isMac: false,
+      isWindows: false,
+      isWebClient: false,
+      repos: [repo]
+    })
+    const automations = sections.find((section) => section.id === 'automations')
+    const workflowIds = sections
+      .filter((section) => section.group === 'workflows')
+      .map((section) => section.id)
+
+    expect(automations?.group).toBe('workflows')
+    expect(automations?.searchEntries[0]?.title).toBe('Show Automations Button')
+    expect(workflowIds[0]).toBe('automations')
+  })
+
   it('places the Orca account in Set Up on desktop only', () => {
     const desktopSections = buildSettingsNavigationMetadata({
       isMac: false,
