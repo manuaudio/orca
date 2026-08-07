@@ -1,7 +1,7 @@
 import type { CommandSpec } from '../args'
 import { GLOBAL_FLAGS } from '../args'
 
-const CLOUD_FLAGS = ['api-url', 'auth-token']
+const CLOUD_FLAGS = ['api-url']
 
 export const ARTIFACT_COMMAND_SPECS: CommandSpec[] = [
   {

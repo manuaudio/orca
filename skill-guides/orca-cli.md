@@ -253,9 +253,8 @@ ORCA artifacts delete <id> --json
   by the error.
 - For local or staging development, `--api-url <url>` overrides the artifact service;
   `ORCA_ARTIFACTS_API_URL` provides the same override for the session.
-- `--auth-token <token>` and `ORCA_CLOUD_AUTH_TOKEN` are development-only authentication
-  overrides. Prefer the active Orca profile's normal PropelAuth session and never expose
-  either token in logs or agent output.
+- `ORCA_CLOUD_AUTH_TOKEN` is a development-only authentication override. Prefer the active
+  Orca profile's normal PropelAuth session and never expose the token in logs or agent output.
 
 ## Built-In Browser
 
