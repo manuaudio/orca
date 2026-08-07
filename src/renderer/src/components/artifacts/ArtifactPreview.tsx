@@ -7,6 +7,11 @@ import { translate } from '@/i18n/i18n'
 type PreviewState = 'loading' | 'ready' | 'unavailable'
 const ARTIFACT_PREVIEW_LOAD_TIMEOUT_MS = 20_000
 
+function scheduleArtifactPreviewTimeout(onTimeout: () => void): () => void {
+  const timeout = setTimeout(onTimeout, ARTIFACT_PREVIEW_LOAD_TIMEOUT_MS)
+  return () => clearTimeout(timeout)
+}
+
 function artifactPreviewUrl(shareUrl: string): string {
   const url = new URL(shareUrl)
   url.searchParams.set('embed', '1')
@@ -62,20 +67,18 @@ export function ArtifactPreview({ shareUrl }: { shareUrl: string }): React.JSX.E
   useEffect(() => {
     let disposed = false
     let detachPreview: (() => void) | undefined
-    let loadTimeout: ReturnType<typeof setTimeout> | undefined
+    let cancelLoadTimeout: (() => void) | undefined
     let loadFailed = false
     const clearLoadTimeout = (): void => {
-      if (loadTimeout !== undefined) {
-        clearTimeout(loadTimeout)
-        loadTimeout = undefined
-      }
+      cancelLoadTimeout?.()
+      cancelLoadTimeout = undefined
     }
     const startLoadTimeout = (): void => {
       clearLoadTimeout()
-      loadTimeout = setTimeout(() => {
+      cancelLoadTimeout = scheduleArtifactPreviewTimeout(() => {
         loadFailed = true
         setState('unavailable')
-      }, ARTIFACT_PREVIEW_LOAD_TIMEOUT_MS)
+      })
     }
     const onLoadStarted = (): void => {
       loadFailed = false
