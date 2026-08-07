@@ -883,7 +883,7 @@
         "pluginsDescription": "Install and manage experimental Orca plugins.",
         "tasksDescription": "Connect providers, install the Linear skill, and choose what appears in Tasks.",
         "artifactsTitle": "Artifacts",
-        "artifactsDescription": "Share HTML and Markdown files through your Orca account.",
+        "artifactsDescription": "Share HTML and Markdown files with your team and manage their public links.",
         "automationsTitle": "Automations",
         "automationsDescription": "Schedule agent work and choose whether Automations appears in the sidebar."
       },
@@ -10376,7 +10376,7 @@
           "signingIn": "Signing in…",
           "signIn": "Sign in to Orca",
           "title": "Artifacts",
-          "description": "Share files and manage public artifact links.",
+          "description": "Share HTML and Markdown files with your team and manage their public links.",
           "howToTitle": "How to use Artifacts",
           "howToDescription": "Ask your agent to share an HTML or Markdown file. Orca handles the upload with your account.",
           "shareStepTitle": "Ask your agent to share it",

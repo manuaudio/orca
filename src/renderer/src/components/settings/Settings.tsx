@@ -1445,7 +1445,7 @@ function Settings(): React.JSX.Element {
                   badge="Beta"
                   description={translate(
                     'auto.components.settings.artifacts.description',
-                    'Share files and manage public artifact links.'
+                    'Share HTML and Markdown files with your team and manage their public links.'
                   )}
                   searchEntries={getSectionSearchEntries('artifacts')}
                 >

@@ -338,7 +338,7 @@ export function buildSettingsNavigationMetadata({
       title: translate('auto.hooks.useSettingsNavigationMetadata.artifactsTitle', 'Artifacts'),
       description: translate(
         'auto.hooks.useSettingsNavigationMetadata.artifactsDescription',
-        'Share HTML and Markdown files through your Orca account.'
+        'Share HTML and Markdown files with your team and manage their public links.'
       ),
       icon: Files,
       searchEntries: getArtifactsSettingsSearchEntries(),
