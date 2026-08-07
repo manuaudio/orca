@@ -33,11 +33,10 @@ function ids(
 
 describe('settings navigation metadata', () => {
   it('puts AI capability panes at the top on desktop', () => {
-    expect(ids().slice(0, 11)).toEqual([
+    expect(ids().slice(0, 10)).toEqual([
       'agents',
       'accounts',
       'orchestration',
-      'artifacts',
       'computer-use',
       'voice',
       'orca-account',
@@ -80,7 +79,7 @@ describe('settings navigation metadata', () => {
     expect(sections.find((section) => section.id === 'mobile')?.group).toBe('setup')
   })
 
-  it('places Automations first under Workflows with its own settings pane', () => {
+  it('places Automations and Artifacts first under Workflows', () => {
     const sections = buildSettingsNavigationMetadata({
       isMac: false,
       isWindows: false,
@@ -88,13 +87,15 @@ describe('settings navigation metadata', () => {
       repos: [repo]
     })
     const automations = sections.find((section) => section.id === 'automations')
+    const artifacts = sections.find((section) => section.id === 'artifacts')
     const workflowIds = sections
       .filter((section) => section.group === 'workflows')
       .map((section) => section.id)
 
     expect(automations?.group).toBe('workflows')
     expect(automations?.searchEntries[0]?.title).toBe('Show Automations Button')
-    expect(workflowIds[0]).toBe('automations')
+    expect(artifacts?.group).toBe('workflows')
+    expect(workflowIds.slice(0, 2)).toEqual(['automations', 'artifacts'])
   })
 
   it('places the Orca account in Set Up on desktop only', () => {
@@ -112,11 +113,10 @@ describe('settings navigation metadata', () => {
   })
 
   it('puts web-safe AI capability panes at the top while hiding desktop-only panes', () => {
-    expect(ids({ isWebClient: true }).slice(0, 7)).toEqual([
+    expect(ids({ isWebClient: true }).slice(0, 6)).toEqual([
       'agents',
       'accounts',
       'orchestration',
-      'artifacts',
       'setup-guide',
       'general',
       'integrations'

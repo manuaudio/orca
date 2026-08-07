@@ -1297,20 +1297,6 @@ function Settings(): React.JSX.Element {
                   {isSectionMounted('orchestration') ? <OrchestrationPane /> : null}
                 </SettingsSection>
 
-                <SettingsSection
-                  id="artifacts"
-                  title={translate('auto.components.settings.artifacts.title', 'Artifacts')}
-                  description={translate(
-                    'auto.components.settings.artifacts.description',
-                    'Share files and manage public artifact links.'
-                  )}
-                  searchEntries={getSectionSearchEntries('artifacts')}
-                >
-                  {isSectionMounted('artifacts') ? (
-                    <ArtifactsSettingsPane settings={settings} updateSettings={updateSettings} />
-                  ) : null}
-                </SettingsSection>
-
                 {linearConnected ? (
                   <SettingsSection
                     id="linear"
@@ -1450,6 +1436,20 @@ function Settings(): React.JSX.Element {
                 >
                   {isSectionMounted('automations') ? (
                     <AutomationsSettingsPane settings={settings} updateSettings={updateSettings} />
+                  ) : null}
+                </SettingsSection>
+
+                <SettingsSection
+                  id="artifacts"
+                  title={translate('auto.components.settings.artifacts.title', 'Artifacts')}
+                  description={translate(
+                    'auto.components.settings.artifacts.description',
+                    'Share files and manage public artifact links.'
+                  )}
+                  searchEntries={getSectionSearchEntries('artifacts')}
+                >
+                  {isSectionMounted('artifacts') ? (
+                    <ArtifactsSettingsPane settings={settings} updateSettings={updateSettings} />
                   ) : null}
                 </SettingsSection>
 

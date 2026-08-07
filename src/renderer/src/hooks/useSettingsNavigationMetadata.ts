@@ -211,17 +211,6 @@ export function buildSettingsNavigationMetadata({
           }
         ]
       : []),
-    {
-      id: 'artifacts',
-      title: translate('auto.hooks.useSettingsNavigationMetadata.artifactsTitle', 'Artifacts'),
-      description: translate(
-        'auto.hooks.useSettingsNavigationMetadata.artifactsDescription',
-        'Share HTML and Markdown files through your Orca account.'
-      ),
-      icon: Files,
-      searchEntries: getArtifactsSettingsSearchEntries(),
-      group: 'capabilities'
-    },
     ...(showDesktopOnlySettings
       ? [
           {
@@ -342,6 +331,17 @@ export function buildSettingsNavigationMetadata({
       ),
       icon: CalendarClock,
       searchEntries: getAutomationsSettingsSearchEntries(),
+      group: 'workflows'
+    },
+    {
+      id: 'artifacts',
+      title: translate('auto.hooks.useSettingsNavigationMetadata.artifactsTitle', 'Artifacts'),
+      description: translate(
+        'auto.hooks.useSettingsNavigationMetadata.artifactsDescription',
+        'Share HTML and Markdown files through your Orca account.'
+      ),
+      icon: Files,
+      searchEntries: getArtifactsSettingsSearchEntries(),
       group: 'workflows'
     },
     {
