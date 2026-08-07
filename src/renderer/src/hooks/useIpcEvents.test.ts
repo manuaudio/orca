@@ -9322,7 +9322,9 @@ describe('useIpcEvents digit-chord routing while Cmd+J is open', () => {
   })
 
   it('leaves the workspace jump alone when the palette is closed', async () => {
-    const harness = await loadIpcEventsHarness(createPaletteState(null))
+    const harness = await loadIpcEventsHarness(createPaletteState(null), {
+      visibleWorktreeIds: ['wt-a', 'wt-b', 'wt-c']
+    })
     harness.useIpcEvents()
     const rowJumps: number[] = []
     const unsubscribe = (await loadRowJumpBus()).subscribeCmdJRowIndexJump((index) =>
@@ -9333,6 +9335,8 @@ describe('useIpcEvents digit-chord routing while Cmd+J is open', () => {
     unsubscribe()
 
     expect(rowJumps).toEqual([])
+    // Why assert the activation and not just the silent bus: a premature return would also emit nothing.
+    expect(harness.activateAndRevealWorkspace).toHaveBeenCalledWith('wt-c')
   })
 
   it('drops the tab digit chord rather than switching tabs behind the overlay', async () => {

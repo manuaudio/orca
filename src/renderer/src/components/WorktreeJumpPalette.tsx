@@ -23,7 +23,15 @@ import {
 } from 'lucide-react'
 import { useAppStore } from '@/store'
 import { getRepoMapFromState, useAllWorktrees } from '@/store/selectors'
-import { selectPaletteStatusInputs } from './worktree-jump-palette-status-inputs'
+import {
+  selectPaletteIndexStatusSnapshot,
+  selectPaletteStatusInputs
+} from './worktree-jump-palette-status-inputs'
+import {
+  PaletteLiveStatusProvider,
+  PaletteRecentTabStatusDot,
+  PaletteWorktreeStatusDot
+} from './cmd-j/palette-live-status'
 import {
   CommandDialog,
   CommandInput,
@@ -44,13 +52,12 @@ import {
 } from '@/components/sidebar/visible-worktrees'
 import { getLiveAgentStatusByWorktreeId, isInactiveWorkspace } from '@/lib/worktree-activity-state'
 import { orderEmptyQueryWorktrees } from '@/lib/order-empty-query-worktrees'
-import StatusIndicator from '@/components/sidebar/StatusIndicator'
-import { cn } from '@/lib/utils'
 import {
-  getWorktreeStatus,
-  getWorktreeStatusLabel,
-  type WorktreeStatus
-} from '@/lib/worktree-status'
+  getOpenTabMatchRelevance,
+  getWorktreeMatchRelevance,
+  NO_MATCH_RELEVANCE
+} from '@/lib/cmd-j-match-relevance'
+import { cn } from '@/lib/utils'
 import { activateAndRevealWorktree } from '@/lib/worktree-activation'
 import { queueWorkspaceActivationTerminalFocus } from '@/lib/workspace-activation-terminal-focus'
 import { findWorktreeById } from '@/store/slices/worktree-helpers'
@@ -98,7 +105,6 @@ import {
 import {
   buildFocusedGroupTabRecency,
   orderRecentWorkspaceTabs,
-  resolveRecentWorkspaceTabStatus,
   type RecentWorkspaceTabRow
 } from '@/lib/recent-workspace-tab-rows'
 import { subscribeCmdJRowIndexJump } from '@/lib/cmd-j-row-index-jump'
@@ -439,17 +445,11 @@ export default function WorktreeJumpPalette(): React.JSX.Element | null {
     )
     return () => window.clearTimeout(timer)
   }, [visible])
+  const paletteStatusInputsActive = visible || statusInputsLingering
   // Why: these hot status maps get a new identity on every app-wide write, so gate the subscription on active-or-closing to stop the always-mounted palette re-rendering on unrelated terminals.
   // Why: ptyIdsByTabId must be included — slept tabs keep a wake-hint sessionId in tab.ptyId, so without it the palette dot would lie green.
-  const {
-    agentStatusByPaneKey,
-    runtimePaneTitlesByTabId,
-    ptyIdsByTabId,
-    terminalLayoutsByTabId,
-    tabsByWorktree
-  } = useAppStore(useShallow((s) => selectPaletteStatusInputs(s, visible || statusInputsLingering)))
-  const agentStatusEpoch = useAppStore((s) =>
-    visible || statusInputsLingering ? s.agentStatusEpoch : 0
+  const { ptyIdsByTabId, terminalLayoutsByTabId, tabsByWorktree } = useAppStore(
+    useShallow((s) => selectPaletteStatusInputs(s, paletteStatusInputsActive))
   )
   const { prCache, issueCache, hostedReviewCache } = useAppStore(
     useShallow((s) => selectWorktreePaletteCacheInputs(s, visible || statusInputsLingering))
@@ -466,6 +466,17 @@ export default function WorktreeJumpPalette(): React.JSX.Element | null {
   const browserTabsByWorktree = useAppStore((s) => s.browserTabsByWorktree)
   const browserPagesByWorkspace = useAppStore((s) => s.browserPagesByWorkspace)
   const unifiedTabsByWorktree = useAppStore((s) => s.unifiedTabsByWorktree)
+  // Why non-reactive: agentStatusByPaneKey and runtimePaneTitlesByTabId are the two hottest maps in
+  // the app, and subscribing re-rendered the whole palette on every agent transition to change
+  // nothing but the status dots — which now hold their own subscription (PaletteLiveStatusProvider).
+  // Reading them here snapshots them for indexing, ordering and filtering instead, refreshed when
+  // the palette opens or the tab set changes: the same freeze-on-open the row order already gets.
+  const paletteIndexStatus = useMemo(
+    () => selectPaletteIndexStatusSnapshot(useAppStore.getState(), paletteStatusInputsActive),
+    // oxlint-disable-next-line react-hooks/exhaustive-deps -- these deps ARE the refresh policy, not reads: re-snapshot when the palette opens or the tab set moves under it, never on the agent churn the snapshot exists to ignore.
+    [paletteStatusInputsActive, tabsByWorktree, unifiedTabsByWorktree]
+  )
+  const { agentStatusByPaneKey, runtimePaneTitlesByTabId } = paletteIndexStatus
   const openFiles = useAppStore((s) => s.openFiles)
   const activeGroupIdByWorktree = useAppStore((s) => s.activeGroupIdByWorktree)
   const groupsByWorktree = useAppStore((s) => s.groupsByWorktree)
@@ -604,16 +615,15 @@ export default function WorktreeJumpPalette(): React.JSX.Element | null {
   const isLoading = repos.length > 0 && Object.keys(worktreesByRepo).length === 0
 
   // Why: keep running-agent workspaces visible under "Hide sleeping" even when the live PTY is momentarily absent, matching sidebar. #7197
-  const liveAgentActivity = useMemo(() => {
-    void agentStatusEpoch
-    const statusByWorktreeId = getLiveAgentStatusByWorktreeId(
-      agentStatusByPaneKey,
-      tabsByWorktree,
-      Date.now()
-    )
-    return { statusByWorktreeId, worktreeIds: new Set(statusByWorktreeId.keys()) }
-  }, [agentStatusByPaneKey, agentStatusEpoch, tabsByWorktree])
-  const worktreeIdsWithLiveAgent = liveAgentActivity.worktreeIds
+  // Why snapshot-scoped: this decides which rows exist, and rows appearing or vanishing mid-open
+  // would shift the list under the cursor — the same reason the recent order freezes on open.
+  const worktreeIdsWithLiveAgent = useMemo(
+    () =>
+      new Set(
+        getLiveAgentStatusByWorktreeId(agentStatusByPaneKey, tabsByWorktree, Date.now()).keys()
+      ),
+    [agentStatusByPaneKey, tabsByWorktree]
+  )
 
   // Why: empty-query mirrors sidebar filters so Search opens on the same quiet list; typed search widens to global non-archived scope.
   const emptyQueryVisibleWorktrees = useMemo(
@@ -915,24 +925,53 @@ export default function WorktreeJumpPalette(): React.JSX.Element | null {
     [workspaceTabEntries, deferredQuery]
   )
 
-  const worktreeItems = useMemo<WorktreePaletteItem[]>(
-    () =>
-      worktreeMatches
-        .map((match) => {
-          const worktree = worktreeMap.get(match.worktreeId)
-          if (!worktree) {
-            return null
-          }
-          return {
-            id: `worktree:${worktree.id}`,
-            type: 'worktree' as const,
+  const worktreeRelevanceById = useMemo(() => {
+    const relevanceById = new Map<string, number>()
+    if (!hasQuery) {
+      return relevanceById
+    }
+    for (const match of worktreeMatches) {
+      const worktree = worktreeMap.get(match.worktreeId)
+      if (worktree) {
+        relevanceById.set(
+          match.worktreeId,
+          getWorktreeMatchRelevance(
             match,
-            worktree
-          }
-        })
-        .filter((item): item is WorktreePaletteItem => item !== null),
-    [worktreeMap, worktreeMatches]
-  )
+            worktree,
+            repoMap.get(worktree.repoId)?.displayName ?? ''
+          )
+        )
+      }
+    }
+    return relevanceById
+  }, [hasQuery, repoMap, worktreeMap, worktreeMatches])
+
+  const worktreeItems = useMemo<WorktreePaletteItem[]>(() => {
+    const items = worktreeMatches
+      .map((match) => {
+        const worktree = worktreeMap.get(match.worktreeId)
+        if (!worktree) {
+          return null
+        }
+        return {
+          id: `worktree:${worktree.id}`,
+          type: 'worktree' as const,
+          match,
+          worktree
+        }
+      })
+      .filter((item): item is WorktreePaletteItem => item !== null)
+    if (!hasQuery) {
+      return items
+    }
+    // Why: searchWorktrees preserves smart-sort order, so a mid-string hit used to outrank a prefix
+    // hit. Sort is stable, so equal relevance still falls back to smart order.
+    return items.sort(
+      (a, b) =>
+        (worktreeRelevanceById.get(a.worktree.id) ?? NO_MATCH_RELEVANCE) -
+        (worktreeRelevanceById.get(b.worktree.id) ?? NO_MATCH_RELEVANCE)
+    )
+  }, [hasQuery, worktreeMap, worktreeMatches, worktreeRelevanceById])
 
   const browserItems = useMemo<BrowserPaletteItem[]>(
     () =>
@@ -964,17 +1003,28 @@ export default function WorktreeJumpPalette(): React.JSX.Element | null {
     [workspaceTabMatches]
   )
 
-  const openTabItems = useMemo<OpenTabPaletteItem[]>(
-    () =>
+  const openTabItems = useMemo<OpenTabPaletteItem[]>(() => {
+    const items = [...browserItems, ...simulatorItems, ...workspaceTabItems]
+    // Why relevance first: each source's score folds in worktree/tab position, so a prefix hit in a
+    // far worktree used to sink below a mid-title hit in the current one. Empty query leaves every
+    // relevance unmatched, so ordering falls straight through to the existing scores.
+    const relevanceById = new Map(
+      items.map((item) => [item.id, getOpenTabMatchRelevance(item.result)])
+    )
+    return items.sort((a, b) => {
+      const relevance =
+        (relevanceById.get(a.id) ?? NO_MATCH_RELEVANCE) -
+        (relevanceById.get(b.id) ?? NO_MATCH_RELEVANCE)
+      if (relevance !== 0) {
+        return relevance
+      }
       // Why: result builders emit comparable ascending scores, so one sort keeps cross-source ranking consistent.
-      [...browserItems, ...simulatorItems, ...workspaceTabItems].sort((a, b) => {
-        if (a.result.score !== b.result.score) {
-          return a.result.score - b.result.score
-        }
-        return a.id.localeCompare(b.id)
-      }),
-    [browserItems, simulatorItems, workspaceTabItems]
-  )
+      if (a.result.score !== b.result.score) {
+        return a.result.score - b.result.score
+      }
+      return a.id.localeCompare(b.id)
+    })
+  }, [browserItems, simulatorItems, workspaceTabItems])
 
   const terminalTabsById = useMemo(() => {
     const byId = new Map<string, TerminalTab>()
@@ -1290,18 +1340,41 @@ export default function WorktreeJumpPalette(): React.JSX.Element | null {
     }
   }, [worktreeItems, projectTargetItems, middleItems, openTabItems, recentTabItems, hasQuery])
 
+  // Why: both lists are relevance-sorted, so their heads carry each section's best hit. The stronger
+  // one leads; ties go to open tabs, matching the empty-query view and favouring a tab already open
+  // over a workspace the user would have to switch to.
+  const openTabsLeadSections = useMemo(() => {
+    if (!hasQuery) {
+      return true
+    }
+    const bestWorktree = worktreeItems[0]
+    const bestWorktreeRelevance = bestWorktree
+      ? (worktreeRelevanceById.get(bestWorktree.worktree.id) ?? NO_MATCH_RELEVANCE)
+      : NO_MATCH_RELEVANCE
+    const bestOpenTab = openTabItems[0]
+    const bestOpenTabRelevance = bestOpenTab
+      ? getOpenTabMatchRelevance(bestOpenTab.result)
+      : NO_MATCH_RELEVANCE
+    return bestOpenTabRelevance <= bestWorktreeRelevance
+  }, [hasQuery, openTabItems, worktreeItems, worktreeRelevanceById])
+
   const selectableItems = useMemo<PaletteItem[]>(
     () =>
-      // Why: mirrors render order, which puts the recent section first on an empty query.
-      hasQuery
+      // Why: mirrors render order, which leads with whichever section holds the strongest match.
+      openTabsLeadSections
         ? [
+            ...paletteSections.visibleOpenTabItems,
+            ...paletteSections.visibleWorktreeItems,
+            ...paletteSections.visibleProjectTargetItems,
+            ...paletteSections.visibleMiddleItems
+          ]
+        : [
             ...paletteSections.visibleWorktreeItems,
             ...paletteSections.visibleProjectTargetItems,
             ...paletteSections.visibleMiddleItems,
             ...paletteSections.visibleOpenTabItems
-          ]
-        : [...paletteSections.visibleOpenTabItems, ...paletteSections.visibleWorktreeItems],
-    [hasQuery, paletteSections]
+          ],
+    [openTabsLeadSections, paletteSections]
   )
 
   // Why: badges number the snapshotted recent rows only — ⌘N is meaningless on a typed query.
@@ -1316,26 +1389,6 @@ export default function WorktreeJumpPalette(): React.JSX.Element | null {
   // Why: the binding's own modifiers, minus its digit, so a remap renders honestly on every platform.
   const digitShortcutModifiers =
     useShortcutKeyComboDetails(DIGIT_INDEX_ACTION_ID)[0]?.keys.slice(0, -1) ?? []
-
-  // Why: dots stay live while the order is frozen, so this recomputes on agent churn — but only
-  // over the handful of rendered rows, never the whole tab list.
-  const recentTabStatusById = useMemo(() => {
-    // Why: `now` decides freshness, so the dot has to re-read on the same tick the rest of the
-    // palette does — otherwise a "done" dot outlives its 30-minute window on screen.
-    void agentStatusEpoch
-    const statusById = new Map<string, WorktreeStatus>()
-    if (hasQuery) {
-      return statusById
-    }
-    const now = Date.now()
-    for (const item of paletteSections.visibleOpenTabItems) {
-      const row = recentTabRowById.get(item.id)
-      if (row?.terminalTab) {
-        statusById.set(item.id, resolveRecentWorkspaceTabStatus(row, recentTabPaneSources, now))
-      }
-    }
-    return statusById
-  }, [agentStatusEpoch, hasQuery, paletteSections, recentTabPaneSources, recentTabRowById])
 
   const { createWorktreeName, showCreateAction } = useMemo(
     () =>
@@ -1450,6 +1503,9 @@ export default function WorktreeJumpPalette(): React.JSX.Element | null {
       return entries
     }
 
+    if (openTabsLeadSections) {
+      pushOpenTabSection()
+    }
     pushWorktreeSection()
     if (visibleProjectTargetItems.length > 0) {
       if (showProjectTargetHeader) {
@@ -1476,14 +1532,16 @@ export default function WorktreeJumpPalette(): React.JSX.Element | null {
       appendPaletteListEntries(entries, visibleMiddleItems)
       pushOverflowHint('__hint_middle_overflow__', middleOverflowCount)
     }
-    pushOpenTabSection()
+    if (!openTabsLeadSections) {
+      pushOpenTabSection()
+    }
     if (showCreateAction) {
       // Why: creating a workspace is the fallback for "nothing here matches", so it sits below every
       // real result — never above them, where it would steal the default selection from a match.
       entries.push({ id: CREATE_WORKTREE_ITEM_ID, type: 'create-worktree' })
     }
     return entries
-  }, [hasQuery, paletteSections, showCreateAction, worktreeItems.length])
+  }, [hasQuery, openTabsLeadSections, paletteSections, showCreateAction, worktreeItems.length])
 
   const selectionItemIds = useMemo(
     () => getWorktreePaletteSelectionItemIds(listEntries),
@@ -2140,7 +2198,11 @@ export default function WorktreeJumpPalette(): React.JSX.Element | null {
     }
   })()
 
-  return (
+  // Why the dialog is held in a variable: the provider below owns the only subscription to the hot
+  // agent-status and pane-title maps, so an agent transition re-renders it and the dots inside it —
+  // never this body. That only holds while these children keep their element identity across the
+  // churn, which passing them straight through as `children` is what guarantees.
+  const paletteDialog = (
     <CommandDialog
       open={visible}
       onOpenChange={handleOpenChange}
@@ -2259,14 +2321,6 @@ export default function WorktreeJumpPalette(): React.JSX.Element | null {
                 // the wrong text — and a branch-less row would throw here before search ever ran.
                 const branch = resolveWorktreeBranchLabel(worktree)
                 const worktreeLabel = resolveWorktreeDisplayName(worktree)
-                const status = getWorktreeStatus(
-                  tabsByWorktree[worktree.id] ?? [],
-                  browserTabsByWorktree[worktree.id] ?? [],
-                  ptyIdsByTabId,
-                  runtimePaneTitlesByTabId,
-                  { liveAgentStatus: liveAgentActivity.statusByWorktreeId.get(worktree.id) }
-                )
-                const statusLabel = getWorktreeStatusLabel(status)
                 const isCurrentWorktree = activeWorktreeId === worktree.id
                 // Why: runtime-owned SSH targets have relay health owned by the runtime layer — don't show a false disconnected.
                 const sshConnectionId =
@@ -2291,8 +2345,7 @@ export default function WorktreeJumpPalette(): React.JSX.Element | null {
                     )}
                   >
                     <div className="flex h-5 w-4 shrink-0 items-center justify-center self-start">
-                      <StatusIndicator status={status} aria-hidden="true" />
-                      <span className="sr-only">{statusLabel}</span>
+                      <PaletteWorktreeStatusDot worktree={worktree} />
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center justify-between gap-2.5">
@@ -2501,7 +2554,9 @@ export default function WorktreeJumpPalette(): React.JSX.Element | null {
                 )
                 const WorkspaceTabIcon =
                   result.contentType === 'terminal' ? SquareTerminal : FileText
-                const recentStatus = recentTabStatusById.get(entry.id) ?? null
+                // Why null on a typed query: the dot belongs to the frozen recent section — the
+                // Open Tabs results a search returns show their content icon instead.
+                const recentRow = hasQuery ? null : (recentTabRowById.get(entry.id) ?? null)
 
                 return (
                   <CommandItem
@@ -2514,14 +2569,10 @@ export default function WorktreeJumpPalette(): React.JSX.Element | null {
                     )}
                   >
                     <div className="flex h-5 w-4 shrink-0 items-center justify-center self-start text-muted-foreground/85">
-                      {recentStatus ? (
-                        <>
-                          <StatusIndicator status={recentStatus} aria-hidden="true" />
-                          <span className="sr-only">{getWorktreeStatusLabel(recentStatus)}</span>
-                        </>
-                      ) : (
-                        <WorkspaceTabIcon className="size-3.5" aria-hidden="true" />
-                      )}
+                      <PaletteRecentTabStatusDot
+                        row={recentRow}
+                        fallback={<WorkspaceTabIcon className="size-3.5" aria-hidden="true" />}
+                      />
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center justify-between gap-2.5">
@@ -2804,6 +2855,12 @@ export default function WorktreeJumpPalette(): React.JSX.Element | null {
             )}
       </div>
     </CommandDialog>
+  )
+
+  return (
+    <PaletteLiveStatusProvider active={paletteStatusInputsActive}>
+      {paletteDialog}
+    </PaletteLiveStatusProvider>
   )
 }
 

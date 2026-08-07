@@ -49,9 +49,9 @@ vi.mock('@/components/cmd-j/palette-host-badge', () => ({
 
 // Why: activation reaches into window.api and the whole worktree-reveal path; the palette's own
 // contract is which result it hands over, so stub the boundary and assert on that.
-const activateWorkspaceTabPaletteResult = vi.fn(
-  (_result: unknown) => ({ status: 'activated' }) as const
-)
+const { activateWorkspaceTabPaletteResult } = vi.hoisted(() => ({
+  activateWorkspaceTabPaletteResult: vi.fn((_result: unknown) => ({ status: 'activated' }) as const)
+}))
 vi.mock('@/lib/workspace-tab-palette-activation', () => ({
   activateWorkspaceTabPaletteResult: (result: unknown) => activateWorkspaceTabPaletteResult(result)
 }))
@@ -578,6 +578,89 @@ describe('WorktreeJumpPalette recent chats & terminals', () => {
     expect(after.some((id) => before.includes(id))).toBe(false)
   })
 
+  /** A tab whose title starts with the query, against worktrees that only match mid-name. */
+  function makeTypedRelevanceState(): Partial<AppState> {
+    const weak = makeWorktree('wt-weak', 'improve-agent-dashboard-performance')
+    const host = makeWorktree('wt-host', 'docs-update')
+    return {
+      worktreesByRepo: { 'repo-1': [weak, host] },
+      showSleepingWorkspaces: true,
+      ptyIdsByTabId: { 'term-host': ['pty-term-host'] },
+      tabsByWorktree: {
+        'wt-host': [makeTerminalTab('term-host', 'wt-host', 'Performance Review Main Daemon')]
+      },
+      unifiedTabsByWorktree: {
+        'wt-host': [
+          makeUnifiedTab('tab-host', 'wt-host', 'term-host', 'Performance Review Main Daemon')
+        ]
+      },
+      groupsByWorktree: { 'wt-host': [makeGroup('wt-host', ['tab-host'])] },
+      activeGroupIdByWorktree: { 'wt-host': 'group-wt-host' }
+    }
+  }
+
+  it('leads a typed query with the tab section when it holds the stronger match', async () => {
+    await renderPalette(makeTypedRelevanceState())
+
+    await act(async () => {
+      setCommandQuery?.('perf')
+    })
+    await flushEffects()
+
+    const rows = getRenderedRowIds().filter((id) => id.length > 0)
+    expect(rows[0]).toBe('workspace-tab:tab-host')
+    expect(rows).toContain('worktree:wt-weak')
+    expect(getCommandValue()).toBe('workspace-tab:tab-host')
+  })
+
+  it('keeps worktrees ahead of tabs when a worktree holds the stronger match', async () => {
+    await renderPalette({
+      ...makeTypedRelevanceState(),
+      worktreesByRepo: {
+        'repo-1': [
+          makeWorktree('wt-strong', 'perf-diff-tighten'),
+          makeWorktree('wt-host', 'docs-update')
+        ]
+      }
+    })
+
+    await act(async () => {
+      setCommandQuery?.('perf-d')
+    })
+    await flushEffects()
+
+    const firstRow = getRenderedRowIds().find((id) => id.length > 0)
+    expect(firstRow).toBe('worktree:wt-strong')
+  })
+
+  it('ranks a typed query by match position inside the worktree section', async () => {
+    await renderPalette({
+      worktreesByRepo: {
+        'repo-1': [
+          // Why this order: smart sort keeps the input order here, so a promoted prefix hit can only
+          // come from relevance re-ranking.
+          makeWorktree('wt-word-a', 'improve-agent-dashboard-performance'),
+          makeWorktree('wt-word-b', 'rc-perf-update-channels'),
+          makeWorktree('wt-prefix', 'perf-diff-tighten')
+        ]
+      },
+      showSleepingWorkspaces: true
+    })
+
+    await act(async () => {
+      setCommandQuery?.('perf')
+    })
+    await flushEffects()
+
+    // Why the two word-start rows keep their input order: relevance ranks by where the match sits
+    // relative to a word boundary, not by raw offset — equal hits still defer to smart sort.
+    expect(getRenderedRowIds().filter((id) => id.startsWith('worktree:'))).toEqual([
+      'worktree:wt-prefix',
+      'worktree:wt-word-a',
+      'worktree:wt-word-b'
+    ])
+  })
+
   it('budget-caps the worktree section when nothing fills the recent one', async () => {
     await renderPalette({
       worktreesByRepo: {
@@ -597,7 +680,11 @@ describe('WorktreeJumpPalette recent chats & terminals', () => {
 
   it('captures the order when tabs hydrate after the palette is already open', async () => {
     const hydrated = makeRecentTabState()
-    await renderPalette({ ...hydrated, tabsByWorktree: {}, unifiedTabsByWorktree: {} })
+    await renderPalette({
+      ...hydrated,
+      tabsByWorktree: {},
+      unifiedTabsByWorktree: {}
+    })
 
     expect(getTabRowIds()).toEqual([])
     // Why: cmdk claims the first row it sees, which before hydration is a worktree.
@@ -634,7 +721,11 @@ describe('WorktreeJumpPalette recent chats & terminals', () => {
 
   it('leaves a deliberately moved selection alone when recents land late', async () => {
     const hydrated = makeRecentTabState()
-    await renderPalette({ ...hydrated, tabsByWorktree: {}, unifiedTabsByWorktree: {} })
+    await renderPalette({
+      ...hydrated,
+      tabsByWorktree: {},
+      unifiedTabsByWorktree: {}
+    })
 
     const worktreeIds = getRenderedRowIds().filter((id) => id.startsWith('worktree:'))
     expect(worktreeIds.length).toBeGreaterThan(1)
@@ -706,7 +797,9 @@ describe('WorktreeJumpPalette recent chats & terminals', () => {
     })
     await flushEffects()
     await act(async () => {
-      useAppStore.setState({ activeModal: 'worktree-palette' } as Partial<AppState>)
+      useAppStore.setState({
+        activeModal: 'worktree-palette'
+      } as Partial<AppState>)
     })
     await flushEffects()
 

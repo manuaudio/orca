@@ -125,6 +125,13 @@ export type IpcEventsHarness = {
   /** Fire a main-process digit chord (zero-based index). */
   jumpToWorktreeIndex: (index: number) => void
   jumpToTabIndex: (index: number) => void
+  /** Standard (non-palette) target of a workspace digit chord. */
+  activateAndRevealWorkspace: ReturnType<typeof vi.fn>
+}
+
+export type IpcEventsHarnessOptions = {
+  /** Sidebar order the workspace digit chord indexes into. */
+  visibleWorktreeIds?: string[]
 }
 
 /**
@@ -132,9 +139,11 @@ export type IpcEventsHarness = {
  * create-terminal IPC, so reveal/adoption behavior is asserted through the hook.
  */
 export async function loadIpcEventsHarness(
-  storeState: HarnessStoreState
+  storeState: HarnessStoreState,
+  options: IpcEventsHarnessOptions = {}
 ): Promise<IpcEventsHarness> {
   const replyTerminalCreate = vi.fn()
+  const activateAndRevealWorkspace = vi.fn()
   let createTerminalListener: ((request: CreateTerminalRequest) => void) | null = null
   let requestTerminalCreateListener: ((request: RequestTerminalCreateRequest) => void) | null = null
   const indexJumpListeners = new Map<string, (index: number) => void>()
@@ -152,9 +161,12 @@ export async function loadIpcEventsHarness(
   vi.doMock('@/lib/ui-zoom', () => ({ applyUIZoom: vi.fn() }))
   vi.doMock('@/lib/worktree-activation', () => ({
     activateAndRevealWorktree: vi.fn(),
+    activateAndRevealWorkspace,
     ensureWorktreeHasInitialTerminal: vi.fn()
   }))
-  vi.doMock('@/components/sidebar/visible-worktrees', () => ({ getVisibleWorktreeIds: () => [] }))
+  vi.doMock('@/components/sidebar/visible-worktrees', () => ({
+    getVisibleWorktreeIds: () => options.visibleWorktreeIds ?? []
+  }))
   vi.doMock('@/lib/floating-workspace-terminal-actions', () => ({
     createFloatingWorkspaceTerminalTab: vi.fn(),
     isEmptyFloatingWorkspacePanelVisible: () => false,
@@ -257,7 +269,8 @@ export async function loadIpcEventsHarness(
     },
     replyTerminalCreate,
     jumpToWorktreeIndex: (index) => fireIndexJump(indexJumpListeners, 'worktree', index),
-    jumpToTabIndex: (index) => fireIndexJump(indexJumpListeners, 'tab', index)
+    jumpToTabIndex: (index) => fireIndexJump(indexJumpListeners, 'tab', index),
+    activateAndRevealWorkspace
   }
 }
 

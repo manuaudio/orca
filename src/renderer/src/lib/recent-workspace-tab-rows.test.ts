@@ -206,11 +206,15 @@ describe('orderRecentWorkspaceTabs', () => {
 describe('resolveRecentWorkspaceTabStatus', () => {
   it('maps attention classes onto the sidebar dot vocabulary', () => {
     const blocked = row('blocked')
+    const done = row('done')
     const working = row('working')
 
     expect(
       resolveRecentWorkspaceTabStatus(blocked, sources([entry('blocked', 'blocked', NOW)]), NOW)
     ).toBe('permission')
+    expect(resolveRecentWorkspaceTabStatus(done, sources([entry('done', 'done', NOW)]), NOW)).toBe(
+      'done'
+    )
     expect(
       resolveRecentWorkspaceTabStatus(working, sources([entry('working', 'working', NOW)]), NOW)
     ).toBe('working')
