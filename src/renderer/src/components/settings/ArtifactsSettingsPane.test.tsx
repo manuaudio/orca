@@ -38,7 +38,7 @@ describe('ArtifactsSettingsPane', () => {
   it('explains the complete sharing workflow', () => {
     render(
       <ArtifactsSettingsPane
-        settings={{ ...getDefaultSettings('/tmp'), artifactsEnabled: true }}
+        settings={{ ...getDefaultSettings('/tmp'), showArtifactsButton: true }}
         updateSettings={vi.fn()}
       />
     )
@@ -54,7 +54,7 @@ describe('ArtifactsSettingsPane', () => {
     ).toBeInTheDocument()
     expect(screen.getByText('Manage it in Orca')).toBeInTheDocument()
     expect(
-      screen.getByText('View and delete links shared through your account.')
+      screen.getByText('Preview, copy, and manage links shared through your account.')
     ).toBeInTheDocument()
     expect(
       screen.queryByText('Uploads require sign-in; public links do not.')
@@ -62,19 +62,27 @@ describe('ArtifactsSettingsPane', () => {
     expect(screen.queryByText('Orca account')).not.toBeInTheDocument()
   })
 
-  it('opens the Artifacts page without exposing CLI controls', async () => {
+  it('controls only sidebar visibility and always allows opening Artifacts', async () => {
     const user = userEvent.setup()
+    const updateSettings = vi.fn()
     render(
       <ArtifactsSettingsPane
-        settings={{ ...getDefaultSettings('/tmp'), artifactsEnabled: true }}
-        updateSettings={vi.fn()}
+        settings={{ ...getDefaultSettings('/tmp'), showArtifactsButton: false }}
+        updateSettings={updateSettings}
       />
     )
+
+    const toggle = screen.getByRole('switch', { name: 'Show Artifacts Button' })
+    expect(toggle).toHaveAttribute('aria-checked', 'false')
+    await user.click(toggle)
+    expect(updateSettings).toHaveBeenCalledWith({ showArtifactsButton: true })
 
     expect(screen.queryByText(/orca artifacts share/)).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Copy command' })).not.toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: /Open Artifacts/ }))
+    const openButton = screen.getByRole('button', { name: /Open Artifacts/ })
+    expect(openButton).toBeEnabled()
+    await user.click(openButton)
     expect(mocks.openArtifactsPage).toHaveBeenCalledOnce()
   })
 })

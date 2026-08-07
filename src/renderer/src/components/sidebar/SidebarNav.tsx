@@ -44,9 +44,9 @@ export function shouldShowAutomationsButton(
 }
 
 export function shouldShowArtifactsButton(
-  settings: Pick<GlobalSettings, 'artifactsEnabled'> | null | undefined
+  settings: Pick<GlobalSettings, 'showArtifactsButton'> | null | undefined
 ): boolean {
-  return settings?.artifactsEnabled === true
+  return settings?.showArtifactsButton !== false
 }
 
 const AgentDashboardSidebarEntry = lazyWithRetry(() => import('./AgentDashboardSidebarEntry'))
@@ -85,6 +85,9 @@ const SidebarNav = React.memo(function SidebarNav() {
   const hideMobileButton = React.useCallback(() => {
     void updateSettings({ showMobileButton: false })
   }, [updateSettings])
+  const hideArtifactsButton = React.useCallback(() => {
+    void updateSettings({ showArtifactsButton: false })
+  }, [updateSettings])
 
   return (
     <div
@@ -94,28 +97,33 @@ const SidebarNav = React.memo(function SidebarNav() {
       <SetupGuideSidebarEntry />
       <SidebarTaskNavButton />
       {showArtifactsButton ? (
-        <button
-          type="button"
-          onClick={openArtifactsPage}
-          aria-current={artifactsActive ? 'page' : undefined}
-          className={cn(
-            'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] font-medium tracking-tight transition-colors',
-            artifactsActive
-              ? 'bg-worktree-sidebar-accent text-worktree-sidebar-accent-foreground'
-              : 'text-worktree-sidebar-foreground/60 hover:bg-worktree-sidebar-foreground/8'
-          )}
-        >
-          <Files
-            className={cn(
-              'size-4 shrink-0',
-              !artifactsActive && 'text-worktree-sidebar-foreground/30'
-            )}
-            strokeWidth={artifactsActive ? 2.25 : 1.75}
-          />
-          <span className="flex-1">
-            {translate('auto.components.sidebar.SidebarNav.artifacts', 'Artifacts')}
-          </span>
-        </button>
+        <ContextMenu>
+          <ContextMenuTrigger asChild>
+            <button
+              type="button"
+              onClick={openArtifactsPage}
+              aria-current={artifactsActive ? 'page' : undefined}
+              className={cn(
+                'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] font-medium tracking-tight transition-colors',
+                artifactsActive
+                  ? 'bg-worktree-sidebar-accent text-worktree-sidebar-accent-foreground'
+                  : 'text-worktree-sidebar-foreground/60 hover:bg-worktree-sidebar-foreground/8'
+              )}
+            >
+              <Files
+                className={cn(
+                  'size-4 shrink-0',
+                  !artifactsActive && 'text-worktree-sidebar-foreground/30'
+                )}
+                strokeWidth={artifactsActive ? 2.25 : 1.75}
+              />
+              <span className="flex-1">
+                {translate('auto.components.sidebar.SidebarNav.artifacts', 'Artifacts')}
+              </span>
+            </button>
+          </ContextMenuTrigger>
+          <HideSidebarMenu onHide={hideArtifactsButton} />
+        </ContextMenu>
       ) : null}
       {showAutomationsButton ? (
         <ContextMenu>

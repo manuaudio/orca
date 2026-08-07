@@ -503,8 +503,7 @@ function hydratedUIPartialMatchesState(state: AppState, hydrated: Partial<UISlic
 
 function sanitizeHydratedActiveView(
   value: PersistedUIState['activeView'],
-  experimentalActivityEnabled: boolean,
-  artifactsEnabled: boolean
+  experimentalActivityEnabled: boolean
 ): TopLevelView {
   // Why: older data (pre-activeView) or a view a different build doesn't have
   // falls back to terminal rather than rendering nothing.
@@ -513,9 +512,6 @@ function sanitizeHydratedActiveView(
   }
   // Why: activity is hidden when its setting is off, so gate only it (mobile/automations stay functional when hidden).
   if (value === 'activity' && !experimentalActivityEnabled) {
-    return 'terminal'
-  }
-  if (value === 'artifacts' && !artifactsEnabled) {
     return 'terminal'
   }
   return value
@@ -1504,16 +1500,12 @@ export const createUISlice: StateCreator<AppState, [], [], UISlice> = (set, get)
     set((state) => ({
       activeView: state.previousViewBeforeSkills
     })),
-  openArtifactsPage: () => {
-    if (get().settings?.artifactsEnabled !== true) {
-      return
-    }
+  openArtifactsPage: () =>
     set((state) => ({
       activeView: 'artifacts',
       previousViewBeforeArtifacts:
         state.activeView === 'artifacts' ? state.previousViewBeforeArtifacts : state.activeView
-    }))
-  },
+    })),
   closeArtifactsPage: () =>
     set((state) => ({
       activeView: state.previousViewBeforeArtifacts
@@ -1546,10 +1538,7 @@ export const createUISlice: StateCreator<AppState, [], [], UISlice> = (set, get)
         state.previousViewBeforeSettings === 'activity' &&
         state.settings?.experimentalActivity !== true
           ? 'terminal'
-          : state.previousViewBeforeSettings === 'artifacts' &&
-              state.settings?.artifactsEnabled !== true
-            ? 'terminal'
-            : state.previousViewBeforeSettings
+          : state.previousViewBeforeSettings
       return { activeView: previousView }
     }),
   settingsNavigationTarget: null,
@@ -2598,11 +2587,7 @@ export const createUISlice: StateCreator<AppState, [], [], UISlice> = (set, get)
         // Why: restore only on startup; on 'sync' broadcasts it would clobber the window's current per-window view.
         activeView:
           source === 'startup'
-            ? sanitizeHydratedActiveView(
-                ui.activeView,
-                s.settings?.experimentalActivity === true,
-                s.settings?.artifactsEnabled === true
-              )
+            ? sanitizeHydratedActiveView(ui.activeView, s.settings?.experimentalActivity === true)
             : s.activeView,
         persistedUIReady: true
       }

@@ -7,25 +7,9 @@ import { useConfirmationDialog } from '@/components/confirmation-dialog-context'
 import { callRuntimeRpc } from '@/runtime/runtime-rpc-client'
 import { useAppStore } from '@/store'
 import { translate } from '@/i18n/i18n'
-import { ArtifactListRowActions } from './ArtifactListRowActions'
+import { ArtifactCollection } from './ArtifactCollection'
 
 const LOCAL_RUNTIME = { kind: 'local' } as const
-
-function formatArtifactDate(value: string): string {
-  return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(
-    new Date(value)
-  )
-}
-
-function formatByteSize(value: number): string {
-  if (value < 1024) {
-    return `${value} B`
-  }
-  if (value < 1024 * 1024) {
-    return `${(value / 1024).toFixed(1)} KB`
-  }
-  return `${(value / (1024 * 1024)).toFixed(1)} MB`
-}
 
 export default function ArtifactsPage(): React.JSX.Element {
   const closePage = useAppStore((state) => state.closeArtifactsPage)
@@ -38,7 +22,10 @@ export default function ArtifactsPage(): React.JSX.Element {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [selectedSlug, setSelectedSlug] = useState<string | null>(null)
   const signedIn = authStatus?.state === 'connected'
+  const selectedArtifact =
+    artifacts.find(({ artifact }) => artifact.slug === selectedSlug) ?? artifacts[0] ?? null
 
   const loadArtifacts = useCallback(async (): Promise<void> => {
     if (!signedIn) {
@@ -76,6 +63,15 @@ export default function ArtifactsPage(): React.JSX.Element {
   useEffect(() => {
     void loadArtifacts()
   }, [loadArtifacts])
+
+  useEffect(() => {
+    setSelectedSlug((current) => {
+      if (current && artifacts.some(({ artifact }) => artifact.slug === current)) {
+        return current
+      }
+      return artifacts[0]?.artifact.slug ?? null
+    })
+  }, [artifacts])
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent): void {
@@ -181,8 +177,8 @@ export default function ArtifactsPage(): React.JSX.Element {
         ) : null}
       </header>
 
-      <div className="flex-1 overflow-y-auto border-t border-border/50 px-5 py-5 scrollbar-sleek md:px-8">
-        <div className="mx-auto flex min-h-full max-w-4xl flex-col">
+      <div className="flex min-h-0 flex-1 border-t border-border/50 px-5 py-5 md:px-8">
+        <div className="mx-auto flex min-h-0 w-full flex-1 flex-col">
           {!signedIn ? (
             <div className="flex min-h-72 flex-col items-center justify-center gap-3 text-center">
               <Files className="size-8 text-muted-foreground" />
@@ -228,32 +224,15 @@ export default function ArtifactsPage(): React.JSX.Element {
               </p>
             </div>
           ) : (
-            <div className="overflow-hidden rounded-md border border-border/50 bg-muted/20">
-              {artifacts.map((item) => {
-                const name =
-                  item.artifact.title || item.artifact.originalFileName || item.artifact.slug
-                return (
-                  <div
-                    key={item.artifact.slug}
-                    className="flex items-center gap-4 border-b border-border/50 px-4 py-3 transition-colors last:border-b-0 hover:bg-accent/50"
-                  >
-                    <Files className="size-4 shrink-0 text-muted-foreground" />
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium">{name}</p>
-                      <p className="truncate text-xs text-muted-foreground">
-                        {formatArtifactDate(item.artifact.updatedAt)} ·{' '}
-                        {formatByteSize(item.artifact.byteSize)}
-                      </p>
-                    </div>
-                    <ArtifactListRowActions
-                      deleting={deletingId === item.artifact.slug}
-                      item={item}
-                      onDelete={(target) => void deleteArtifact(target)}
-                    />
-                  </div>
-                )
-              })}
-            </div>
+            selectedArtifact && (
+              <ArtifactCollection
+                artifacts={artifacts}
+                deletingId={deletingId}
+                selectedArtifact={selectedArtifact}
+                selectArtifact={setSelectedSlug}
+                deleteArtifact={(target) => void deleteArtifact(target)}
+              />
+            )
           )}
           {error ? <p className="mt-3 text-xs text-destructive">{error}</p> : null}
         </div>

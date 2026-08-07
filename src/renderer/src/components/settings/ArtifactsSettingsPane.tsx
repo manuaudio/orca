@@ -17,14 +17,14 @@ export function ArtifactsSettingsPane({
   return (
     <div className="divide-y divide-border">
       <SettingsSwitchRow
-        label={translate('auto.components.settings.artifacts.enable', 'Enable Artifacts')}
+        label={translate('auto.components.settings.artifacts.showButton', 'Show Artifacts Button')}
         description={translate(
-          'auto.components.settings.artifacts.enableDescription',
-          'Add Artifacts to the sidebar so you can open and delete shared files.'
+          'auto.components.settings.artifacts.showButtonDescription',
+          'Show the Artifacts shortcut in the sidebar.'
         )}
-        checked={settings.artifactsEnabled === true}
+        checked={settings.showArtifactsButton !== false}
         onChange={() =>
-          void updateSettings({ artifactsEnabled: settings.artifactsEnabled !== true })
+          void updateSettings({ showArtifactsButton: settings.showArtifactsButton === false })
         }
       />
       <section className="space-y-4 py-5">
@@ -104,7 +104,6 @@ export function ArtifactsSettingsPane({
           type="button"
           variant="ghost"
           className="h-auto w-full justify-start whitespace-normal rounded-md border border-border/60 bg-muted/20 px-4 py-3 text-left hover:bg-muted/35 hover:text-foreground"
-          disabled={settings.artifactsEnabled !== true}
           onClick={openArtifactsPage}
         >
           <span className="flex size-8 shrink-0 items-center justify-center rounded-md border border-border bg-background text-muted-foreground">
@@ -116,8 +115,8 @@ export function ArtifactsSettingsPane({
             </span>
             <span className="block text-xs font-normal text-muted-foreground">
               {translate(
-                'auto.components.settings.artifacts.openArtifactsDescription',
-                'View and delete links shared through your account.'
+                'auto.components.settings.artifacts.openArtifactsDescriptionV2',
+                'Preview, copy, and manage links shared through your account.'
               )}
             </span>
           </span>

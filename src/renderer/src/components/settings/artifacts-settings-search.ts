@@ -4,10 +4,10 @@ import { translateSearchKeyword } from './settings-search-keywords'
 
 export const getArtifactsSettingsSearchEntries = createLocalizedCatalog(() => [
   {
-    title: translate('auto.components.settings.artifacts.enable', 'Enable Artifacts'),
+    title: translate('auto.components.settings.artifacts.showButton', 'Show Artifacts Button'),
     description: translate(
-      'auto.components.settings.artifacts.enableDescription',
-      'Share HTML and Markdown files and manage their public links from Orca.'
+      'auto.components.settings.artifacts.showButtonDescription',
+      'Show the Artifacts shortcut in the sidebar.'
     ),
     keywords: [
       ...translateSearchKeyword('auto.components.settings.artifacts.keywordArtifacts', 'artifacts'),

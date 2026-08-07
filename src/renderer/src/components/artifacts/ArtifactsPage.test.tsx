@@ -10,7 +10,16 @@ const mocks = vi.hoisted(() => ({
   connect: vi.fn(),
   confirm: vi.fn(),
   refreshAuth: vi.fn(),
-  rpc: vi.fn()
+  rpc: vi.fn(),
+  resolvePartition: vi.fn(),
+  writeClipboardText: vi.fn(),
+  openUrl: vi.fn(),
+  toastSuccess: vi.fn(),
+  toastError: vi.fn()
+}))
+
+vi.mock('sonner', () => ({
+  toast: { success: mocks.toastSuccess, error: mocks.toastError }
 }))
 
 vi.mock('@/components/confirmation-dialog-context', () => ({
@@ -47,6 +56,18 @@ describe('ArtifactsPage', () => {
     mocks.confirm.mockReset()
     mocks.refreshAuth.mockReset()
     mocks.rpc.mockReset()
+    mocks.resolvePartition.mockReset().mockResolvedValue('persist:orca-default')
+    mocks.writeClipboardText.mockReset().mockResolvedValue(undefined)
+    mocks.openUrl.mockReset().mockResolvedValue(undefined)
+    mocks.toastSuccess.mockReset()
+    mocks.toastError.mockReset()
+    Object.assign(window, {
+      api: {
+        browser: { sessionResolvePartition: mocks.resolvePartition },
+        ui: { writeClipboardText: mocks.writeClipboardText },
+        shell: { openUrl: mocks.openUrl }
+      }
+    })
     mocks.rpc.mockResolvedValue({
       status: 'ok',
       value: [
@@ -72,10 +93,10 @@ describe('ArtifactsPage', () => {
 
   afterEach(cleanup)
 
-  it('uses the shared top-level page chrome and compact artifact actions', async () => {
+  it('renders the selected artifact in-app with copy link as the primary action', async () => {
     render(<ArtifactsPage />)
 
-    expect(await screen.findByText('Quarterly report')).toBeInTheDocument()
+    expect(await screen.findAllByText('Quarterly report')).toHaveLength(2)
     const closeButton = screen.getByRole('button', { name: 'Close artifacts' })
     expect(closeButton).toHaveClass('size-7', 'rounded-full')
     expect(closeButton.closest('header')).toHaveClass('px-5', 'pb-3', 'pt-1.5', 'md:px-8')
@@ -84,8 +105,37 @@ describe('ArtifactsPage', () => {
       'border',
       'border-border/50'
     )
-    expect(screen.getByRole('button', { name: 'Open artifact' })).toHaveClass('size-8')
+    const copyButton = screen.getByRole('button', { name: 'Copy link' })
+    expect(copyButton).toHaveAttribute('data-variant', 'default')
+    expect(screen.getByRole('button', { name: 'Open in browser' })).toHaveAttribute(
+      'data-variant',
+      'outline'
+    )
     expect(screen.getByRole('button', { name: 'Delete artifact' })).toHaveClass('text-destructive')
+
+    await waitFor(() => {
+      const preview = document.querySelector('webview[aria-label="Artifact preview"]')
+      expect(preview).toHaveAttribute('partition', 'persist:orca-default')
+      expect(preview).toHaveAttribute('src', 'https://share.onorca.dev/a/report-123')
+    })
+
+    fireEvent.click(copyButton)
+    await waitFor(() =>
+      expect(mocks.writeClipboardText).toHaveBeenCalledWith('https://share.onorca.dev/a/report-123')
+    )
+    expect(mocks.toastSuccess).toHaveBeenCalledWith('Artifact link copied')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open in browser' }))
+    expect(mocks.openUrl).toHaveBeenCalledWith('https://share.onorca.dev/a/report-123')
+  })
+
+  it('shows a fallback when the desktop preview session is unavailable', async () => {
+    mocks.resolvePartition.mockResolvedValue(null)
+    render(<ArtifactsPage />)
+
+    expect(await screen.findByText('Preview unavailable')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Copy link' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Open in browser' })).toBeEnabled()
   })
 
   it('closes from the header button and Escape', async () => {

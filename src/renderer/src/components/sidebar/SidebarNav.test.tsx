@@ -299,21 +299,28 @@ describe('SidebarNav', () => {
     expect(shouldShowMobileButton({})).toBe(true)
   })
 
-  it('keeps Artifacts hidden until it is enabled', () => {
-    expect(shouldShowArtifactsButton(null)).toBe(false)
-    expect(shouldShowArtifactsButton({})).toBe(false)
-    expect(shouldShowArtifactsButton({ artifactsEnabled: true })).toBe(true)
+  it('shows the Artifacts entry by default for older settings', () => {
+    expect(shouldShowArtifactsButton(null)).toBe(true)
+    expect(shouldShowArtifactsButton({})).toBe(true)
+    expect(shouldShowArtifactsButton({ showArtifactsButton: false })).toBe(false)
   })
 
-  it('opens Artifacts from the sidebar when enabled', async () => {
-    setSidebarState({
-      settings: { ...getDefaultSettings('/tmp'), artifactsEnabled: true }
-    })
+  it('opens Artifacts from the sidebar', async () => {
     const container = await renderSidebarNav()
 
     await clickButton(getButtonByText(container, 'Artifacts'))
 
     expect(mocks.openArtifactsPage).toHaveBeenCalledOnce()
+  })
+
+  it('hides Artifacts from its context menu', async () => {
+    const container = await renderSidebarNav()
+    const row = getButtonByText(container, 'Artifacts')
+    const menu = row.closest('[data-testid="context-menu"]')
+
+    await clickButton(getHideButton(menu as Element))
+
+    expect(mocks.updateSettings).toHaveBeenCalledWith({ showArtifactsButton: false })
   })
 
   it('hides the Mobile entry when the sidebar setting is off', () => {

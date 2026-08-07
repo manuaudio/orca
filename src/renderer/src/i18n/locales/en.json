@@ -10384,7 +10384,10 @@
           "manageStepTitle": "Manage it in Orca",
           "manageStepDescription": "Open Artifacts from the sidebar to revisit or delete links owned by your account.",
           "openArtifacts": "Open Artifacts",
-          "openArtifactsDescription": "View and delete links shared through your account."
+          "openArtifactsDescription": "View and delete links shared through your account.",
+          "showButton": "Show Artifacts Button",
+          "showButtonDescription": "Show the Artifacts shortcut in the sidebar.",
+          "openArtifactsDescriptionV2": "Preview, copy, and manage links shared through your account."
         },
         "orcaAccount": {
           "connected": "Connected",
@@ -14876,7 +14879,14 @@
           "emptyCopy": "Ask your agent to share an HTML or Markdown file, and it will appear here.",
           "openArtifact": "Open artifact",
           "deleteArtifact": "Delete artifact"
-        }
+        },
+        "copySuccess": "Artifact link copied",
+        "copyFailed": "Could not copy artifact link",
+        "copyLink": "Copy link",
+        "openInBrowser": "Open in browser",
+        "preview": "Artifact preview",
+        "previewUnavailable": "Preview unavailable",
+        "previewUnavailableDescription": "Open this artifact in your browser to view it."
       }
     },
     "i18n": {

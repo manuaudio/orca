@@ -3453,7 +3453,6 @@ describe('createUISlice space navigation', () => {
 
   it('returns to the originating view after closing Artifacts', () => {
     const store = createUIStore()
-    store.setState({ settings: { ...getDefaultSettings('/tmp'), artifactsEnabled: true } })
 
     store.getState().openTaskPage()
     store.getState().openArtifactsPage()
@@ -3466,15 +3465,15 @@ describe('createUISlice space navigation', () => {
     expect(store.getState().activeView).toBe('tasks')
   })
 
-  it('does not open or restore Artifacts while the feature is disabled', () => {
+  it('opens and restores Artifacts when its sidebar shortcut is hidden', () => {
     const store = createUIStore()
-    store.setState({ settings: { ...getDefaultSettings('/tmp'), artifactsEnabled: false } })
+    store.setState({ settings: { ...getDefaultSettings('/tmp'), showArtifactsButton: false } })
 
     store.getState().openArtifactsPage()
-    expect(store.getState().activeView).toBe('terminal')
+    expect(store.getState().activeView).toBe('artifacts')
 
     store.getState().hydratePersistedUI(makePersistedUI({ activeView: 'artifacts' }), 'startup')
-    expect(store.getState().activeView).toBe('terminal')
+    expect(store.getState().activeView).toBe('artifacts')
   })
 })
 
