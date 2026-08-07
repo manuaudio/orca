@@ -6,6 +6,12 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
+  authStatus: {
+    activeProfileId: 'profile-a',
+    cloud: { cloudProfileId: 'cloud-a', userId: 'user-a' },
+    configured: true,
+    state: 'connected'
+  } as Record<string, unknown>,
   closePage: vi.fn(),
   connect: vi.fn(),
   confirm: vi.fn(),
@@ -41,7 +47,7 @@ vi.mock('@/store', () => ({
     selector({
       closeArtifactsPage: mocks.closePage,
       connectCurrentOrcaProfile: mocks.connect,
-      orcaProfileAuthStatus: { configured: true, state: 'connected' },
+      orcaProfileAuthStatus: mocks.authStatus,
       orcaProfileConnecting: false,
       refreshCurrentOrcaProfileAuth: mocks.refreshAuth
     })
@@ -51,6 +57,12 @@ import ArtifactsPage from './ArtifactsPage'
 
 describe('ArtifactsPage', () => {
   beforeEach(() => {
+    mocks.authStatus = {
+      activeProfileId: 'profile-a',
+      cloud: { cloudProfileId: 'cloud-a', userId: 'user-a' },
+      configured: true,
+      state: 'connected'
+    }
     mocks.closePage.mockReset()
     mocks.connect.mockReset()
     mocks.confirm.mockReset()
@@ -164,4 +176,100 @@ describe('ArtifactsPage', () => {
     ).toBeInTheDocument()
     expect(screen.queryByText(/orca artifacts share/)).not.toBeInTheDocument()
   })
+
+  it('never renders artifacts loaded for a previous account', async () => {
+    let resolveFirst!: (value: unknown) => void
+    mocks.rpc.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveFirst = resolve
+      })
+    )
+    const view = render(<ArtifactsPage />)
+
+    mocks.authStatus = {
+      activeProfileId: 'profile-b',
+      cloud: { cloudProfileId: 'cloud-b', userId: 'user-b' },
+      configured: true,
+      state: 'connected'
+    }
+    mocks.rpc.mockResolvedValueOnce({ status: 'ok', value: [] })
+    view.rerender(<ArtifactsPage />)
+    resolveFirst({
+      status: 'ok',
+      value: [
+        {
+          artifact: {
+            byteSize: 1,
+            createdAt: '2026-08-01T12:00:00.000Z',
+            deletedAt: null,
+            expiresAt: '2026-09-01T12:00:00.000Z',
+            originalFileName: 'account-a-secret.html',
+            renderedContentType: 'text/html',
+            slug: 'account-a-secret',
+            sourceContentType: 'text/html',
+            title: 'Account A secret',
+            updatedAt: '2026-08-02T12:00:00.000Z',
+            version: 1
+          },
+          shareUrl: 'https://share.onorca.dev/a/account-a-secret'
+        }
+      ]
+    })
+
+    await screen.findByText('No shared artifacts')
+    expect(screen.queryByText('Account A secret')).not.toBeInTheDocument()
+  })
+
+  it('does not apply a completed deletion to a new account', async () => {
+    let resolveDelete!: (value: unknown) => void
+    mocks.confirm.mockResolvedValue(true)
+    mocks.rpc.mockResolvedValueOnce({
+      status: 'ok',
+      value: [artifactListItem('Shared slug A', 'shared-slug')]
+    })
+    mocks.rpc.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveDelete = resolve
+      })
+    )
+    const view = render(<ArtifactsPage />)
+
+    await screen.findAllByText('Shared slug A')
+    fireEvent.click(screen.getByRole('button', { name: 'Delete artifact' }))
+    await waitFor(() => expect(mocks.rpc).toHaveBeenCalledTimes(2))
+
+    mocks.authStatus = {
+      activeProfileId: 'profile-b',
+      cloud: { cloudProfileId: 'cloud-b', userId: 'user-b' },
+      configured: true,
+      state: 'connected'
+    }
+    mocks.rpc.mockResolvedValueOnce({
+      status: 'ok',
+      value: [artifactListItem('Shared slug B', 'shared-slug')]
+    })
+    view.rerender(<ArtifactsPage />)
+    resolveDelete({ status: 'ok', value: undefined })
+
+    expect(await screen.findAllByText('Shared slug B')).toHaveLength(2)
+  })
 })
+
+function artifactListItem(title: string, slug: string): Record<string, unknown> {
+  return {
+    artifact: {
+      byteSize: 1,
+      createdAt: '2026-08-01T12:00:00.000Z',
+      deletedAt: null,
+      expiresAt: '2026-09-01T12:00:00.000Z',
+      originalFileName: `${slug}.html`,
+      renderedContentType: 'text/html',
+      slug,
+      sourceContentType: 'text/html',
+      title,
+      updatedAt: '2026-08-02T12:00:00.000Z',
+      version: 1
+    },
+    shareUrl: `https://share.onorca.dev/a/${slug}`
+  }
+}

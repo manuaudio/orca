@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Files, Loader2, RefreshCw, X } from 'lucide-react'
 import type { ArtifactCloudOperation, ArtifactListItem } from '../../../../shared/artifacts'
 import { Button } from '@/components/ui/button'
@@ -10,6 +10,7 @@ import { translate } from '@/i18n/i18n'
 import { ArtifactCollection } from './ArtifactCollection'
 
 const LOCAL_RUNTIME = { kind: 'local' } as const
+const EMPTY_ARTIFACTS: readonly ArtifactListItem[] = []
 
 export default function ArtifactsPage(): React.JSX.Element {
   const closePage = useAppStore((state) => state.closeArtifactsPage)
@@ -18,17 +19,34 @@ export default function ArtifactsPage(): React.JSX.Element {
   const connect = useAppStore((state) => state.connectCurrentOrcaProfile)
   const refreshAuth = useAppStore((state) => state.refreshCurrentOrcaProfileAuth)
   const confirm = useConfirmationDialog()
-  const [artifacts, setArtifacts] = useState<readonly ArtifactListItem[]>([])
+  const [artifactState, setArtifactState] = useState<{
+    identity: string | null
+    items: readonly ArtifactListItem[]
+  }>({ identity: null, items: [] })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState<{ identity: string; slug: string } | null>(null)
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null)
+  const loadSequence = useRef(0)
   const signedIn = authStatus?.state === 'connected'
+  const accountIdentity = signedIn
+    ? `${authStatus.activeProfileId}:${authStatus.cloud?.userId ?? ''}:${authStatus.cloud?.cloudProfileId ?? ''}`
+    : null
+  const accountIdentityRef = useRef(accountIdentity)
+  accountIdentityRef.current = accountIdentity
+  const artifacts =
+    artifactState.identity === accountIdentity ? artifactState.items : EMPTY_ARTIFACTS
+  const deletingId = deleting?.identity === accountIdentity ? deleting.slug : null
   const selectedArtifact =
     artifacts.find(({ artifact }) => artifact.slug === selectedSlug) ?? artifacts[0] ?? null
 
   const loadArtifacts = useCallback(async (): Promise<void> => {
-    if (!signedIn) {
+    const sequence = ++loadSequence.current
+    if (!accountIdentity) {
+      setArtifactState({ identity: null, items: [] })
+      setSelectedSlug(null)
+      setError(null)
+      setLoading(false)
       return
     }
     setLoading(true)
@@ -39,8 +57,11 @@ export default function ArtifactsPage(): React.JSX.Element {
         'artifacts.list',
         {}
       )
+      if (sequence !== loadSequence.current) {
+        return
+      }
       if (result.status === 'ok') {
-        setArtifacts(result.value)
+        setArtifactState({ identity: accountIdentity, items: result.value })
       } else {
         await refreshAuth()
         setError(
@@ -51,17 +72,25 @@ export default function ArtifactsPage(): React.JSX.Element {
         )
       }
     } catch (loadError) {
+      if (sequence !== loadSequence.current) {
+        return
+      }
       console.error('Failed to load artifacts:', loadError)
       setError(
         translate('auto.components.artifacts.ArtifactsPage.loadFailed', 'Could not load artifacts.')
       )
     } finally {
-      setLoading(false)
+      if (sequence === loadSequence.current) {
+        setLoading(false)
+      }
     }
-  }, [refreshAuth, signedIn])
+  }, [accountIdentity, refreshAuth])
 
   useEffect(() => {
     void loadArtifacts()
+    return () => {
+      loadSequence.current += 1
+    }
   }, [loadArtifacts])
 
   useEffect(() => {
@@ -86,6 +115,10 @@ export default function ArtifactsPage(): React.JSX.Element {
   }, [closePage])
 
   const deleteArtifact = async (item: ArtifactListItem): Promise<void> => {
+    const requestedIdentity = accountIdentity
+    if (!requestedIdentity) {
+      return
+    }
     const name = item.artifact.title || item.artifact.originalFileName || item.artifact.slug
     const accepted = await confirm({
       title: translate('auto.components.artifacts.ArtifactsPage.deleteTitle', 'Delete artifact?'),
@@ -97,33 +130,47 @@ export default function ArtifactsPage(): React.JSX.Element {
       confirmLabel: translate('auto.components.artifacts.ArtifactsPage.delete', 'Delete'),
       confirmVariant: 'destructive'
     })
-    if (!accepted) {
+    if (!accepted || accountIdentityRef.current !== requestedIdentity) {
       return
     }
-    setDeletingId(item.artifact.slug)
+    setDeleting({ identity: requestedIdentity, slug: item.artifact.slug })
     try {
       const result = await callRuntimeRpc<ArtifactCloudOperation<void>>(
         LOCAL_RUNTIME,
         'artifacts.delete',
         { id: item.artifact.slug }
       )
+      if (accountIdentityRef.current !== requestedIdentity) {
+        return
+      }
       if (result.status !== 'ok') {
         await refreshAuth()
         throw new Error(result.status)
       }
-      setArtifacts((current) =>
-        current.filter(({ artifact }) => artifact.slug !== item.artifact.slug)
+      setArtifactState((current) =>
+        current.identity === requestedIdentity
+          ? {
+              ...current,
+              items: current.items.filter(({ artifact }) => artifact.slug !== item.artifact.slug)
+            }
+          : current
       )
     } catch (deleteError) {
       console.error('Failed to delete artifact:', deleteError)
-      setError(
-        translate(
-          'auto.components.artifacts.ArtifactsPage.deleteFailed',
-          'Could not delete the artifact.'
+      if (accountIdentityRef.current === requestedIdentity) {
+        setError(
+          translate(
+            'auto.components.artifacts.ArtifactsPage.deleteFailed',
+            'Could not delete the artifact.'
+          )
         )
-      )
+      }
     } finally {
-      setDeletingId(null)
+      setDeleting((current) =>
+        current?.identity === requestedIdentity && current.slug === item.artifact.slug
+          ? null
+          : current
+      )
     }
   }
 
