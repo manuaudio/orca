@@ -2086,7 +2086,9 @@
         "projectsGroupsHeader": "Projects & Groups",
         "projectBadge": "Project",
         "repoGroupBadge": "Repo group",
-        "pluginCommandFailed": "Could not run the plugin command."
+        "pluginCommandFailed": "Could not run the plugin command.",
+        "recentChatsTerminalsHeader": "Recent Chats & Terminals",
+        "27f10cca63": "Search chats, terminals, worktrees, settings, and actions..."
       },
       "github": {
         "pr": {

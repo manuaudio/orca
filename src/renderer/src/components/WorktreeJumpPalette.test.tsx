@@ -4,16 +4,20 @@ import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type * as ReactI18Next from 'react-i18next'
-import type { Repo, Worktree } from '../../../shared/types'
+import type { Repo, Tab, TabGroup, TerminalTab, Worktree } from '../../../shared/types'
+import type { AgentStatusEntry, AgentStatusState } from '../../../shared/agent-status-types'
 import { useAppStore } from '@/store'
 import type { AppState } from '@/store/types'
+import { emitCmdJRowIndexJump } from '@/lib/cmd-j-row-index-jump'
 import WorktreeJumpPalette from './WorktreeJumpPalette'
 
 vi.mock('react-i18next', async (importOriginal) => {
   const actual = await importOriginal<typeof ReactI18Next>()
   return {
     ...actual,
-    useTranslation: () => ({ t: (_key: string, fallback?: string) => fallback ?? _key })
+    useTranslation: () => ({
+      t: (_key: string, fallback?: string) => fallback ?? _key
+    })
   }
 })
 
@@ -41,6 +45,15 @@ vi.mock('@/components/repo/RepoBadgeLabel', () => ({
 
 vi.mock('@/components/cmd-j/palette-host-badge', () => ({
   getPaletteHostBadge: () => null
+}))
+
+// Why: activation reaches into window.api and the whole worktree-reveal path; the palette's own
+// contract is which result it hands over, so stub the boundary and assert on that.
+const activateWorkspaceTabPaletteResult = vi.fn(
+  (_result: unknown) => ({ status: 'activated' }) as const
+)
+vi.mock('@/lib/workspace-tab-palette-activation', () => ({
+  activateWorkspaceTabPaletteResult: (result: unknown) => activateWorkspaceTabPaletteResult(result)
 }))
 
 vi.mock('@/components/ui/command', async () => {
@@ -347,5 +360,277 @@ describe('WorktreeJumpPalette', () => {
     await flushEffects()
 
     expect(testContainer.textContent).toContain('Feature workspace')
+  })
+})
+
+function makeTerminalTab(id: string, worktreeId: string, title: string): TerminalTab {
+  return {
+    id,
+    ptyId: `pty-${id}`,
+    worktreeId,
+    title,
+    customTitle: null,
+    color: null,
+    sortOrder: 0,
+    createdAt: 0
+  }
+}
+
+function makeUnifiedTab(id: string, worktreeId: string, entityId: string, label: string): Tab {
+  return {
+    id,
+    entityId,
+    groupId: `group-${worktreeId}`,
+    worktreeId,
+    contentType: 'terminal',
+    label,
+    customLabel: null,
+    color: null,
+    sortOrder: 0,
+    createdAt: 0
+  }
+}
+
+function makeGroup(worktreeId: string, tabIds: string[]): TabGroup {
+  return {
+    id: `group-${worktreeId}`,
+    worktreeId,
+    activeTabId: tabIds[0] ?? null,
+    tabOrder: tabIds,
+    recentTabIds: tabIds
+  }
+}
+
+const LEAF_ID = '11111111-2222-4333-8444-555555555555'
+
+function makeAgentEntry(
+  tabId: string,
+  state: AgentStatusState,
+  stateStartedAt: number
+): AgentStatusEntry {
+  return {
+    state,
+    prompt: '',
+    updatedAt: stateStartedAt,
+    stateStartedAt,
+    paneKey: `${tabId}:${LEAF_ID}`,
+    stateHistory: []
+  }
+}
+
+/** Two worktrees, one terminal tab each, none of them current. */
+function makeRecentTabState(overrides: Partial<AppState> = {}): Partial<AppState> {
+  const alpha = makeWorktree('wt-alpha', 'Alpha workspace')
+  const beta = makeWorktree('wt-beta', 'Beta workspace')
+  return {
+    worktreesByRepo: { 'repo-1': [alpha, beta] },
+    showSleepingWorkspaces: true,
+    ptyIdsByTabId: {
+      'term-alpha': ['pty-term-alpha'],
+      'term-beta': ['pty-term-beta']
+    },
+    tabsByWorktree: {
+      'wt-alpha': [makeTerminalTab('term-alpha', 'wt-alpha', 'Alpha chat')],
+      'wt-beta': [makeTerminalTab('term-beta', 'wt-beta', 'Beta chat')]
+    },
+    unifiedTabsByWorktree: {
+      'wt-alpha': [makeUnifiedTab('tab-alpha', 'wt-alpha', 'term-alpha', 'Alpha chat')],
+      'wt-beta': [makeUnifiedTab('tab-beta', 'wt-beta', 'term-beta', 'Beta chat')]
+    },
+    groupsByWorktree: {
+      'wt-alpha': [makeGroup('wt-alpha', ['tab-alpha'])],
+      'wt-beta': [makeGroup('wt-beta', ['tab-beta'])]
+    },
+    activeGroupIdByWorktree: {
+      'wt-alpha': 'group-wt-alpha',
+      'wt-beta': 'group-wt-beta'
+    },
+    ...overrides
+  }
+}
+
+/** One worktree with `count` terminal tabs, so the recent section overflows its cap. */
+function makeManyTabState(count: number): Partial<AppState> {
+  const ids = Array.from({ length: count }, (_, index) => `${index}`)
+  return {
+    worktreesByRepo: { 'repo-1': [makeWorktree('wt-many', 'Many workspace')] },
+    showSleepingWorkspaces: true,
+    ptyIdsByTabId: Object.fromEntries(ids.map((id) => [`term-${id}`, [`pty-${id}`]])),
+    tabsByWorktree: {
+      'wt-many': ids.map((id) => makeTerminalTab(`term-${id}`, 'wt-many', `Chat ${id}`))
+    },
+    unifiedTabsByWorktree: {
+      'wt-many': ids.map((id) => makeUnifiedTab(`tab-${id}`, 'wt-many', `term-${id}`, `Chat ${id}`))
+    },
+    groupsByWorktree: {
+      'wt-many': [
+        makeGroup(
+          'wt-many',
+          ids.map((id) => `tab-${id}`)
+        )
+      ]
+    },
+    activeGroupIdByWorktree: { 'wt-many': 'group-wt-many' }
+  }
+}
+
+function getSectionHeaders(): string[] {
+  return [...testContainer.querySelectorAll<HTMLElement>('[data-command-item]')].map(
+    (node) => node.dataset.commandItem ?? ''
+  )
+}
+
+function getTabRowIds(): string[] {
+  return [...testContainer.querySelectorAll<HTMLElement>('[data-command-item^="workspace-tab:"]')]
+    .map((node) => node.dataset.commandItem ?? '')
+    .map((id) => id.replace('workspace-tab:', ''))
+}
+
+describe('WorktreeJumpPalette recent chats & terminals', () => {
+  beforeEach(() => {
+    globalThis.IS_REACT_ACT_ENVIRONMENT = true
+    setCommandQuery = null
+    activateWorkspaceTabPaletteResult.mockClear()
+    useAppStore.setState(initialAppState, true)
+    testContainer = document.createElement('div')
+    document.body.appendChild(testContainer)
+    testRoot = createRoot(testContainer)
+  })
+
+  afterEach(async () => {
+    await act(async () => {
+      testRoot.unmount()
+    })
+    document.body.replaceChildren()
+    useAppStore.setState(initialAppState, true)
+  })
+
+  it('leads the empty-query list with the recent section', async () => {
+    await renderPalette(makeRecentTabState())
+
+    const rows = getSectionHeaders().filter((id) => id.length > 0)
+    expect(rows[0]).toMatch(/^workspace-tab:/)
+    expect(rows.some((id) => id.startsWith('worktree:'))).toBe(true)
+    expect(testContainer.textContent).toContain('Recent Chats & Terminals')
+    expect(testContainer.textContent).toContain('Recent Worktrees')
+  })
+
+  it('caps the recent section so the worktree header stays above the fold', async () => {
+    await renderPalette(makeManyTabState(12))
+
+    expect(getTabRowIds()).toHaveLength(6)
+    expect(testContainer.textContent).toContain('Recent Worktrees')
+  })
+
+  it('ranks a blocked agent above a more recently visited idle tab', async () => {
+    await renderPalette(
+      makeRecentTabState({
+        agentStatusByPaneKey: {
+          [`term-alpha:${LEAF_ID}`]: makeAgentEntry('term-alpha', 'blocked', Date.now())
+        },
+        lastVisitedAtByWorktreeId: { 'wt-beta': Date.now() }
+      })
+    )
+
+    expect(getTabRowIds()).toEqual(['tab-alpha', 'tab-beta'])
+  })
+
+  it('freezes the order captured on open while statuses keep changing', async () => {
+    await renderPalette(
+      makeRecentTabState({
+        lastVisitedAtByWorktreeId: { 'wt-beta': Date.now() }
+      })
+    )
+
+    expect(getTabRowIds()).toEqual(['tab-beta', 'tab-alpha'])
+
+    await act(async () => {
+      useAppStore.setState({
+        agentStatusByPaneKey: {
+          [`term-alpha:${LEAF_ID}`]: makeAgentEntry('term-alpha', 'blocked', Date.now())
+        }
+      } as Partial<AppState>)
+    })
+    await flushEffects()
+
+    expect(getTabRowIds()).toEqual(['tab-beta', 'tab-alpha'])
+  })
+
+  it('excludes the current tab from the recent section', async () => {
+    await renderPalette(
+      makeRecentTabState({
+        activeWorktreeId: 'wt-alpha',
+        activeTabType: 'terminal',
+        activeTabId: 'term-alpha',
+        activeTabIdByWorktree: { 'wt-alpha': 'term-alpha' },
+        activeTabTypeByWorktree: { 'wt-alpha': 'terminal' }
+      })
+    )
+
+    expect(getTabRowIds()).toEqual(['tab-beta'])
+  })
+
+  it('activates the row a digit chord addresses while open', async () => {
+    await renderPalette(
+      makeRecentTabState({
+        lastVisitedAtByWorktreeId: { 'wt-beta': Date.now() }
+      })
+    )
+
+    expect(getTabRowIds()).toEqual(['tab-beta', 'tab-alpha'])
+
+    await act(async () => {
+      emitCmdJRowIndexJump(1)
+    })
+    await flushEffects()
+
+    expect(activateWorkspaceTabPaletteResult).toHaveBeenCalledWith(
+      expect.objectContaining({ tabId: 'tab-alpha' })
+    )
+  })
+
+  it('ignores a digit chord beyond the rendered recent rows', async () => {
+    await renderPalette(makeRecentTabState())
+
+    await act(async () => {
+      emitCmdJRowIndexJump(8)
+    })
+    await flushEffects()
+
+    expect(activateWorkspaceTabPaletteResult).not.toHaveBeenCalled()
+  })
+
+  it('stops routing digit chords once a query is typed', async () => {
+    await renderPalette(makeRecentTabState())
+
+    await act(async () => {
+      setCommandQuery?.('Alpha')
+    })
+    await flushEffects()
+
+    await act(async () => {
+      emitCmdJRowIndexJump(0)
+    })
+    await flushEffects()
+
+    expect(activateWorkspaceTabPaletteResult).not.toHaveBeenCalled()
+  })
+
+  it('labels a folder workspace row with its display name, not a branch', async () => {
+    await renderPalette(
+      makeRecentTabState({
+        worktreesByRepo: {
+          'repo-1': [
+            makeWorktree('wt-alpha', 'Alpha workspace', {
+              isMainWorktree: true,
+              branch: ''
+            }),
+            makeWorktree('wt-beta', 'Beta workspace')
+          ]
+        }
+      })
+    )
+
+    expect(testContainer.textContent).toContain('Alpha workspace')
   })
 })

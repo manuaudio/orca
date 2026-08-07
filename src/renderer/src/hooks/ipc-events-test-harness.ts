@@ -122,6 +122,9 @@ export type IpcEventsHarness = {
   createTerminal: (request: CreateTerminalRequest) => void
   requestTerminalCreate: (request: RequestTerminalCreateRequest) => void
   replyTerminalCreate: ReturnType<typeof vi.fn>
+  /** Fire a main-process digit chord (zero-based index). */
+  jumpToWorktreeIndex: (index: number) => void
+  jumpToTabIndex: (index: number) => void
 }
 
 /**
@@ -134,6 +137,7 @@ export async function loadIpcEventsHarness(
   const replyTerminalCreate = vi.fn()
   let createTerminalListener: ((request: CreateTerminalRequest) => void) | null = null
   let requestTerminalCreateListener: ((request: RequestTerminalCreateRequest) => void) | null = null
+  const indexJumpListeners = new Map<string, (index: number) => void>()
 
   vi.resetModules()
   vi.unstubAllGlobals()
@@ -187,6 +191,14 @@ export async function loadIpcEventsHarness(
           },
           onRequestTerminalCreate: (listener: (request: RequestTerminalCreateRequest) => void) => {
             requestTerminalCreateListener = listener
+            return () => {}
+          },
+          onJumpToWorktreeIndex: (listener: (index: number) => void) => {
+            indexJumpListeners.set('worktree', listener)
+            return () => {}
+          },
+          onJumpToTabIndex: (listener: (index: number) => void) => {
+            indexJumpListeners.set('tab', listener)
             return () => {}
           }
         }),
@@ -243,6 +255,20 @@ export async function loadIpcEventsHarness(
       }
       requestTerminalCreateListener(request)
     },
-    replyTerminalCreate
+    replyTerminalCreate,
+    jumpToWorktreeIndex: (index) => fireIndexJump(indexJumpListeners, 'worktree', index),
+    jumpToTabIndex: (index) => fireIndexJump(indexJumpListeners, 'tab', index)
   }
+}
+
+function fireIndexJump(
+  listeners: Map<string, (index: number) => void>,
+  kind: string,
+  index: number
+): void {
+  const listener = listeners.get(kind)
+  if (!listener) {
+    throw new Error(`Expected the ${kind}-index jump listener to be registered`)
+  }
+  listener(index)
 }
