@@ -14905,7 +14905,8 @@
         "preview": "Artifact preview",
         "previewUnavailable": "Preview unavailable",
         "previewUnavailableDescription": "Open this artifact in your browser to view it.",
-        "actions": "Artifact actions"
+        "actions": "Artifact actions",
+        "moreActions": "More artifact actions"
       }
     },
     "i18n": {

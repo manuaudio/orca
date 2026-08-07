@@ -1,9 +1,15 @@
-import { Copy, ExternalLink, Loader2, Trash2 } from 'lucide-react'
+import { ChevronDown, Copy, ExternalLink, Loader2, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import type { ArtifactListItem } from '../../../../shared/artifacts'
 import { Button } from '@/components/ui/button'
 import { ButtonGroup } from '@/components/ui/button-group'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger
+} from '@/components/ui/dropdown-menu'
 import { translate } from '@/i18n/i18n'
 
 type ArtifactActionsProps = {
@@ -27,49 +33,35 @@ export function ArtifactActions({
   }
 
   return (
-    <ButtonGroup
-      className="shrink-0 shadow-xs"
-      aria-label={translate('auto.components.artifacts.actions', 'Artifact actions')}
-    >
-      <Button size="sm" onClick={() => void copyLink()}>
-        <Copy />
-        {translate('auto.components.artifacts.copyLink', 'Copy link')}
-      </Button>
-      <Tooltip>
-        <TooltipTrigger asChild>
+    <DropdownMenu modal={false}>
+      <ButtonGroup
+        className="shrink-0 shadow-xs"
+        aria-label={translate('auto.components.artifacts.actions', 'Artifact actions')}
+      >
+        <Button size="sm" onClick={() => void copyLink()}>
+          <Copy />
+          {translate('auto.components.artifacts.copyLink', 'Copy link')}
+        </Button>
+        <DropdownMenuTrigger asChild>
           <Button
-            variant="secondary"
             size="icon-sm"
-            onClick={() => void window.api.shell.openUrl(item.shareUrl)}
-            aria-label={translate('auto.components.artifacts.openInBrowser', 'Open in browser')}
+            aria-label={translate('auto.components.artifacts.moreActions', 'More artifact actions')}
           >
-            <ExternalLink />
+            <ChevronDown />
           </Button>
-        </TooltipTrigger>
-        <TooltipContent side="bottom" sideOffset={6}>
+        </DropdownMenuTrigger>
+      </ButtonGroup>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem onSelect={() => void window.api.shell.openUrl(item.shareUrl)}>
+          <ExternalLink />
           {translate('auto.components.artifacts.openInBrowser', 'Open in browser')}
-        </TooltipContent>
-      </Tooltip>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            variant="secondary"
-            size="icon-sm"
-            className="text-muted-foreground hover:text-destructive"
-            disabled={deleting}
-            onClick={() => onDelete(item)}
-            aria-label={translate(
-              'auto.components.artifacts.ArtifactsPage.deleteArtifact',
-              'Delete artifact'
-            )}
-          >
-            {deleting ? <Loader2 className="animate-spin" /> : <Trash2 />}
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent side="bottom" sideOffset={6}>
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem variant="destructive" disabled={deleting} onSelect={() => onDelete(item)}>
+          {deleting ? <Loader2 className="animate-spin" /> : <Trash2 />}
           {translate('auto.components.artifacts.ArtifactsPage.deleteArtifact', 'Delete artifact')}
-        </TooltipContent>
-      </Tooltip>
-    </ButtonGroup>
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }

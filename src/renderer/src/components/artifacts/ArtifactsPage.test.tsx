@@ -3,6 +3,7 @@
 import '@testing-library/jest-dom/vitest'
 import type { ReactNode } from 'react'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
@@ -94,6 +95,7 @@ describe('ArtifactsPage', () => {
   afterEach(cleanup)
 
   it('renders the selected artifact in-app with copy link as the primary action', async () => {
+    const user = userEvent.setup()
     render(<ArtifactsPage />)
 
     expect(await screen.findAllByText('Quarterly report')).toHaveLength(2)
@@ -111,13 +113,15 @@ describe('ArtifactsPage', () => {
       'aria-label',
       'Artifact actions'
     )
-    expect(screen.getByRole('button', { name: 'Open in browser' })).toHaveAttribute(
+    const moreButton = screen.getByRole('button', { name: 'More artifact actions' })
+    expect(moreButton).toHaveAttribute('data-variant', 'default')
+    expect(screen.queryByRole('menuitem', { name: 'Open in browser' })).not.toBeInTheDocument()
+
+    await user.click(moreButton)
+    const openItem = screen.getByRole('menuitem', { name: 'Open in browser' })
+    expect(screen.getByRole('menuitem', { name: 'Delete artifact' })).toHaveAttribute(
       'data-variant',
-      'secondary'
-    )
-    expect(screen.getByRole('button', { name: 'Delete artifact' })).toHaveClass(
-      'text-muted-foreground',
-      'hover:text-destructive'
+      'destructive'
     )
 
     await waitFor(() => {
@@ -132,17 +136,19 @@ describe('ArtifactsPage', () => {
     )
     expect(mocks.toastSuccess).toHaveBeenCalledWith('Artifact link copied')
 
-    fireEvent.click(screen.getByRole('button', { name: 'Open in browser' }))
+    await user.click(openItem)
     expect(mocks.openUrl).toHaveBeenCalledWith('https://share.onorca.dev/a/report-123')
   })
 
   it('shows a fallback when the desktop preview session is unavailable', async () => {
+    const user = userEvent.setup()
     mocks.resolvePartition.mockResolvedValue(null)
     render(<ArtifactsPage />)
 
     expect(await screen.findByText('Preview unavailable')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Copy link' })).toBeEnabled()
-    expect(screen.getByRole('button', { name: 'Open in browser' })).toBeEnabled()
+    await user.click(screen.getByRole('button', { name: 'More artifact actions' }))
+    expect(screen.getByRole('menuitem', { name: 'Open in browser' })).toBeEnabled()
   })
 
   it('closes from the header button and Escape', async () => {
