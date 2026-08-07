@@ -1,4 +1,3 @@
-import { readFile, stat } from 'node:fs/promises'
 import { basename, extname, resolve } from 'node:path'
 import type {
   ArtifactCloudOperation,
@@ -7,6 +6,11 @@ import type {
   ArtifactWriteRequest
 } from '../../shared/artifacts'
 import { ARTIFACT_CLI_MAX_RPC_BYTES } from '../../shared/artifacts'
+import {
+  parseRemoteArtifactInput,
+  REMOTE_ARTIFACT_INPUT_ENV
+} from '../../shared/artifact-cli-bridge'
+import { readArtifactFileWithinLimit } from '../../shared/artifact-file-read'
 import type { CommandHandler, HandlerContext } from '../dispatch'
 import { RuntimeClientError } from '../runtime-client'
 import { formatArtifactList, formatArtifactShared } from '../artifact-format'
@@ -34,25 +38,70 @@ function cloudOptions(ctx: HandlerContext): ArtifactCloudOptions {
   }
 }
 
+function rejectRemoteSelectionFlags(ctx: HandlerContext): void {
+  for (const flag of ['environment', 'pairing-code']) {
+    if (ctx.flags.has(flag)) {
+      throw new RuntimeClientError(
+        'invalid_argument',
+        `\`--${flag}\` does not retarget artifact commands; artifacts use the signed-in desktop account.`
+      )
+    }
+  }
+}
+
+function artifactContentType(path: string): ArtifactWriteRequest['contentType'] | null {
+  const extension = extname(path).toLowerCase()
+  return ['.html', '.htm'].includes(extension)
+    ? 'text/html'
+    : ['.md', '.markdown'].includes(extension)
+      ? 'text/markdown'
+      : null
+}
+
+async function readStdinWithinLimit(maxBytes: number): Promise<string> {
+  const chunks: Buffer[] = []
+  let bytes = 0
+  for await (const chunk of process.stdin) {
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk))
+    bytes += buffer.length
+    if (bytes > maxBytes) {
+      throw new RuntimeClientError(
+        'invalid_argument',
+        'Artifact is too large for the Orca CLI transport. Use the browser upload page instead.'
+      )
+    }
+    chunks.push(buffer)
+  }
+  return Buffer.concat(chunks).toString('utf8')
+}
+
 async function readArtifactRequest(ctx: HandlerContext): Promise<ArtifactWriteRequest> {
-  const sourceKey = resolve(ctx.cwd, requireStringFlag(ctx, 'file'))
-  const fileStats = await stat(sourceKey).catch(() => null)
-  if (!fileStats?.isFile()) {
+  const remoteInput = parseRemoteArtifactInput(process.env[REMOTE_ARTIFACT_INPUT_ENV])
+  const sourceKey = remoteInput?.sourceKey ?? resolve(ctx.cwd, requireStringFlag(ctx, 'file'))
+  const contentType = remoteInput?.contentType ?? artifactContentType(sourceKey)
+  if (!contentType) {
+    throw new RuntimeClientError('invalid_argument', 'Artifacts must be HTML or Markdown files.')
+  }
+  const localRead = remoteInput
+    ? null
+    : await readArtifactFileWithinLimit(sourceKey, ARTIFACT_CLI_MAX_RPC_BYTES)
+  if (localRead?.status === 'not-file') {
     throw new RuntimeClientError(
       'invalid_argument',
       'Artifact file was not found or is not a file.'
     )
   }
-  const extension = extname(sourceKey).toLowerCase()
-  const contentType = ['.html', '.htm'].includes(extension)
-    ? 'text/html'
-    : ['.md', '.markdown'].includes(extension)
-      ? 'text/markdown'
-      : null
-  if (!contentType) {
-    throw new RuntimeClientError('invalid_argument', 'Artifacts must be HTML or Markdown files.')
+  if (localRead?.status === 'too-large') {
+    throw new RuntimeClientError(
+      'invalid_argument',
+      'Artifact is too large for the Orca CLI transport. Use the browser upload page instead.'
+    )
   }
-  const content = await readFile(sourceKey, 'utf8')
+  const content = remoteInput
+    ? await readStdinWithinLimit(ARTIFACT_CLI_MAX_RPC_BYTES)
+    : localRead?.status === 'ok'
+      ? localRead.content
+      : ''
   if (!content) {
     throw new RuntimeClientError('invalid_argument', 'Artifact file is empty.')
   }
@@ -60,7 +109,7 @@ async function readArtifactRequest(ctx: HandlerContext): Promise<ArtifactWriteRe
     sourceKey,
     content,
     contentType,
-    fileName: basename(sourceKey),
+    fileName: remoteInput?.fileName ?? basename(sourceKey),
     ...cloudOptions(ctx)
   }
   if (Buffer.byteLength(JSON.stringify(request), 'utf8') > ARTIFACT_CLI_MAX_RPC_BYTES) {
@@ -84,6 +133,7 @@ function requireOperation<T>(operation: ArtifactCloudOperation<T>): T {
 
 export const ARTIFACT_HANDLERS: Record<string, CommandHandler> = {
   'artifacts list': async (ctx) => {
+    rejectRemoteSelectionFlags(ctx)
     const response = await ctx.client.call<ArtifactCloudOperation<readonly ArtifactListItem[]>>(
       'artifacts.list',
       cloudOptions(ctx)
@@ -92,6 +142,7 @@ export const ARTIFACT_HANDLERS: Record<string, CommandHandler> = {
     printResult({ ...response, result: value }, ctx.json, formatArtifactList)
   },
   'artifacts share': async (ctx) => {
+    rejectRemoteSelectionFlags(ctx)
     const response = await ctx.client.call<ArtifactCloudOperation<ArtifactListItem>>(
       'artifacts.share',
       await readArtifactRequest(ctx)
@@ -100,6 +151,7 @@ export const ARTIFACT_HANDLERS: Record<string, CommandHandler> = {
     printResult({ ...response, result: value }, ctx.json, formatArtifactShared)
   },
   'artifacts update': async (ctx) => {
+    rejectRemoteSelectionFlags(ctx)
     const response = await ctx.client.call<ArtifactCloudOperation<ArtifactListItem>>(
       'artifacts.update',
       await readArtifactRequest(ctx)
@@ -108,7 +160,9 @@ export const ARTIFACT_HANDLERS: Record<string, CommandHandler> = {
     printResult({ ...response, result: value }, ctx.json, formatArtifactShared)
   },
   'artifacts unshare': async (ctx) => {
-    const sourceKey = resolve(ctx.cwd, requireStringFlag(ctx, 'file'))
+    rejectRemoteSelectionFlags(ctx)
+    const remoteInput = parseRemoteArtifactInput(process.env[REMOTE_ARTIFACT_INPUT_ENV])
+    const sourceKey = remoteInput?.sourceKey ?? resolve(ctx.cwd, requireStringFlag(ctx, 'file'))
     const response = await ctx.client.call<ArtifactCloudOperation<void>>('artifacts.unshare', {
       sourceKey,
       ...cloudOptions(ctx)
@@ -117,6 +171,7 @@ export const ARTIFACT_HANDLERS: Record<string, CommandHandler> = {
     printResult({ ...response, result: { deleted: true } }, ctx.json, () => 'Artifact deleted.')
   },
   'artifacts delete': async (ctx) => {
+    rejectRemoteSelectionFlags(ctx)
     const response = await ctx.client.call<ArtifactCloudOperation<void>>('artifacts.delete', {
       id: requireStringFlag(ctx, 'id'),
       ...cloudOptions(ctx)

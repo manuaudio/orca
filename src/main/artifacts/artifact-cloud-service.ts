@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import type {
   ArtifactCloudOperation,
   ArtifactCloudOptions,
@@ -10,12 +11,98 @@ import { OrcaCloudRequestError } from '../orca-profiles/profile-cloud-client'
 import { runWithFreshOrcaCloudSession } from '../orca-profiles/profile-cloud-session-refresh'
 import { resolveArtifactCloudApiUrl } from './artifact-cloud-config'
 import {
+  type ArtifactShareScope,
+  captureArtifactShareLifecycle,
   getArtifactShareRecord,
-  removeArtifactShareRecord,
+  isArtifactShareLifecycleCurrent,
+  removeArtifactShareRecords,
   saveArtifactShareRecord
 } from './artifact-share-record-store'
+import type { ActiveOrcaProfileState } from '../orca-profiles/profile-index-store'
 
 type ArtifactCreateResponse = ArtifactListItem & { editToken: string }
+
+type ArtifactAuthContext = {
+  profileId: string
+  scope: ArtifactShareScope
+  assertCurrent: () => void
+}
+
+function tokenFingerprint(token: string): string {
+  return createHash('sha256').update(token).digest('hex')
+}
+
+function authContext(
+  active: ActiveOrcaProfileState,
+  scope: ArtifactShareScope,
+  userDataPath: string,
+  expectedCloud?: { userId: string; profileId: string; organizationId: string }
+): ArtifactAuthContext {
+  const lifecycleGeneration = captureArtifactShareLifecycle(active.profile.id, userDataPath)
+  return {
+    profileId: active.profile.id,
+    scope,
+    assertCurrent: () => {
+      const current = ensureActiveOrcaProfile(userDataPath)
+      const cloudCurrent =
+        !expectedCloud ||
+        (current.profile.cloud?.userId === expectedCloud.userId &&
+          current.profile.cloud.cloudProfileId === expectedCloud.profileId &&
+          (current.profile.cloud.activeOrgId ?? '') === expectedCloud.organizationId)
+      if (
+        current.profile.id !== active.profile.id ||
+        !cloudCurrent ||
+        !isArtifactShareLifecycleCurrent(active.profile.id, userDataPath, lifecycleGeneration)
+      ) {
+        throw new Error(
+          'The signed-in Orca account changed while the artifact request was running.'
+        )
+      }
+    }
+  }
+}
+
+function storedSessionAuthContext(
+  active: ActiveOrcaProfileState,
+  apiOrigin: string,
+  userDataPath: string
+): ArtifactAuthContext {
+  if (!active.profile.cloud) {
+    throw new Error('The active Orca profile is not linked to a cloud account.')
+  }
+  return authContext(
+    active,
+    {
+      cloudUserId: active.profile.cloud.userId,
+      cloudProfileId: active.profile.cloud.cloudProfileId,
+      apiOrigin
+    },
+    userDataPath,
+    {
+      userId: active.profile.cloud.userId,
+      profileId: active.profile.cloud.cloudProfileId,
+      organizationId: active.profile.cloud.activeOrgId ?? ''
+    }
+  )
+}
+
+function explicitTokenAuthContext(
+  active: ActiveOrcaProfileState,
+  apiOrigin: string,
+  token: string,
+  userDataPath: string
+): ArtifactAuthContext {
+  const fingerprint = tokenFingerprint(token)
+  return authContext(
+    active,
+    {
+      cloudUserId: `token:${fingerprint}`,
+      cloudProfileId: `token:${fingerprint}`,
+      apiOrigin
+    },
+    userDataPath
+  )
+}
 
 export class ArtifactCloudService {
   constructor(private readonly userDataPath: string) {}
@@ -30,23 +117,30 @@ export class ArtifactCloudService {
   }
 
   share(request: ArtifactWriteRequest): Promise<ArtifactCloudOperation<ArtifactListItem>> {
-    return this.withAuth(request, async (token, apiUrl, profileId) => {
+    return this.withAuth(request, async (token, apiUrl, auth) => {
       const response = await artifactRequest<ArtifactCreateResponse>(apiUrl, token, '', {
         method: 'POST',
         body: writeBody(request)
       })
-      saveArtifactShareRecord(profileId, this.userDataPath, request.sourceKey, {
+      auth.assertCurrent()
+      saveArtifactShareRecord(auth.profileId, this.userDataPath, request.sourceKey, {
         slug: response.artifact.slug,
         editToken: response.editToken,
-        shareUrl: response.shareUrl
+        shareUrl: response.shareUrl,
+        ...auth.scope
       })
       return { artifact: response.artifact, shareUrl: response.shareUrl }
     })
   }
 
   update(request: ArtifactWriteRequest): Promise<ArtifactCloudOperation<ArtifactListItem>> {
-    return this.withAuth(request, async (token, apiUrl, profileId) => {
-      const record = getArtifactShareRecord(profileId, this.userDataPath, request.sourceKey)
+    return this.withAuth(request, async (token, apiUrl, auth) => {
+      const record = getArtifactShareRecord(
+        auth.profileId,
+        this.userDataPath,
+        request.sourceKey,
+        auth.scope
+      )
       if (!record) {
         throw new Error('This file has not been shared from the active Orca profile.')
       }
@@ -62,8 +156,13 @@ export class ArtifactCloudService {
   unshare(
     request: ArtifactCloudOptions & { sourceKey: string }
   ): Promise<ArtifactCloudOperation<void>> {
-    return this.withAuth(request, async (token, apiUrl, profileId) => {
-      const record = getArtifactShareRecord(profileId, this.userDataPath, request.sourceKey)
+    return this.withAuth(request, async (token, apiUrl, auth) => {
+      const record = getArtifactShareRecord(
+        auth.profileId,
+        this.userDataPath,
+        request.sourceKey,
+        auth.scope
+      )
       if (!record) {
         throw new Error('This file has not been shared from the active Orca profile.')
       }
@@ -71,26 +170,34 @@ export class ArtifactCloudService {
         method: 'DELETE',
         editToken: record.editToken
       })
-      removeArtifactShareRecord(profileId, this.userDataPath, request.sourceKey)
+      removeArtifactShareRecords(auth.profileId, this.userDataPath, auth.scope, {
+        sourceKey: request.sourceKey,
+        slug: record.slug
+      })
     })
   }
 
   delete(id: string, options: ArtifactCloudOptions): Promise<ArtifactCloudOperation<void>> {
-    return this.withAuth(options, async (token, apiUrl) => {
+    return this.withAuth(options, async (token, apiUrl, auth) => {
       await artifactRequest<void>(apiUrl, token, `/${encodeURIComponent(id)}`, { method: 'DELETE' })
+      removeArtifactShareRecords(auth.profileId, this.userDataPath, auth.scope, { slug: id })
     })
   }
 
   private async withAuth<T>(
     options: ArtifactCloudOptions,
-    operation: (token: string, apiUrl: string, profileId: string) => Promise<T>
+    operation: (token: string, apiUrl: string, auth: ArtifactAuthContext) => Promise<T>
   ): Promise<ArtifactCloudOperation<T>> {
     const apiUrl = resolveArtifactCloudApiUrl(options.apiUrl)
     const active = ensureActiveOrcaProfile(this.userDataPath)
     if (options.authToken?.trim()) {
+      const token = options.authToken.trim()
+      const auth = explicitTokenAuthContext(active, apiUrl, token, this.userDataPath)
+      const value = await operation(token, apiUrl, auth)
+      auth.assertCurrent()
       return {
         status: 'ok',
-        value: await operation(options.authToken.trim(), apiUrl, active.profile.id)
+        value
       }
     }
     const config = getOrcaCloudAuthConfig()
@@ -101,7 +208,12 @@ export class ArtifactCloudService {
       config.config,
       active,
       this.userDataPath,
-      (session) => operation(session.accessToken, apiUrl, active.profile.id)
+      async (session) => {
+        const auth = storedSessionAuthContext(active, apiUrl, this.userDataPath)
+        const value = await operation(session.accessToken, apiUrl, auth)
+        auth.assertCurrent()
+        return value
+      }
     )
     return result.status === 'ok'
       ? { status: 'ok', value: result.value }

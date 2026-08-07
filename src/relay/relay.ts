@@ -68,6 +68,7 @@ import {
 import { relayLogLine } from './relay-diagnostic-log'
 import { remoteCliRequestTimeoutMs } from './remote-cli-timeout'
 import { shouldReadRemoteCliStdin } from './remote-cli-stdin'
+import { prepareRemoteArtifactCliInput } from './remote-artifact-cli-input'
 import { registerManagedHookInstaller } from './managed-hook-installer'
 import { registerRelayPluginHostCallHandlers } from './plugin-host-call-handler'
 import { DispatcherClientWriter } from './dispatcher-client-writer'
@@ -302,7 +303,17 @@ async function runOrcaCliMode(
   endpointCredential?: string
 ): Promise<void> {
   const myVersion = readLaunchVersion()
-  const stdin = shouldReadRemoteCliStdin(argv) ? await readOrcaCliStdin() : undefined
+  let preparedArtifact: Awaited<ReturnType<typeof prepareRemoteArtifactCliInput>>
+  try {
+    preparedArtifact = await prepareRemoteArtifactCliInput(argv, process.cwd())
+  } catch (error) {
+    process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`)
+    process.exitCode = 1
+    return
+  }
+  const stdin =
+    preparedArtifact.stdin ??
+    (shouldReadRemoteCliStdin(argv) ? await readOrcaCliStdin() : undefined)
   const sock = createConnection({ path: sockPath })
   const stdoutWriter = new DispatcherClientWriter(
     (data, onSettled) =>
@@ -337,7 +348,10 @@ async function runOrcaCliMode(
           argv,
           cwd: process.cwd(),
           env,
-          ...(stdin !== undefined ? { stdin } : {})
+          ...(stdin !== undefined ? { stdin } : {}),
+          ...(preparedArtifact.artifactInput
+            ? { artifactInput: preparedArtifact.artifactInput }
+            : {})
         }
       },
       nextSeq++,

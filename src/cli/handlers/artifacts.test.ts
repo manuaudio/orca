@@ -1,9 +1,10 @@
-import { mkdtemp, writeFile } from 'node:fs/promises'
+import { mkdtemp, open, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ArtifactListItem } from '../../shared/artifacts'
 import { ARTIFACT_HANDLERS } from './artifacts'
+import { ARTIFACT_CLI_MAX_RPC_BYTES } from '../../shared/artifacts'
 
 const item: ArtifactListItem = {
   artifact: {
@@ -70,4 +71,39 @@ describe('artifact CLI handlers', () => {
     ).rejects.toThrow(/HTML or Markdown/)
     expect(call).not.toHaveBeenCalled()
   })
+
+  it('rejects a sparse oversized file before attempting the RPC', async () => {
+    const cwd = await mkdtemp(join(tmpdir(), 'orca-artifact-cli-'))
+    const handle = await open(join(cwd, 'oversized.html'), 'w')
+    await handle.truncate(ARTIFACT_CLI_MAX_RPC_BYTES + 1)
+    await handle.close()
+    const call = vi.fn()
+
+    await expect(
+      ARTIFACT_HANDLERS['artifacts share']!({
+        client: { call } as never,
+        cwd,
+        flags: new Map([['file', 'oversized.html']]),
+        json: false
+      })
+    ).rejects.toThrow(/too large/)
+    expect(call).not.toHaveBeenCalled()
+  })
+
+  it.each(['environment', 'pairing-code'])(
+    'rejects explicit remote selector --%s',
+    async (flag) => {
+      const call = vi.fn()
+
+      await expect(
+        ARTIFACT_HANDLERS['artifacts list']!({
+          client: { call } as never,
+          cwd: '/repo',
+          flags: new Map([[flag, 'remote-host']]),
+          json: false
+        })
+      ).rejects.toThrow(/does not retarget artifact commands/)
+      expect(call).not.toHaveBeenCalled()
+    }
+  )
 })
