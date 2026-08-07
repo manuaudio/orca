@@ -299,13 +299,17 @@ describe('SidebarNav', () => {
     expect(shouldShowMobileButton({})).toBe(true)
   })
 
-  it('shows the Artifacts entry by default for older settings', () => {
-    expect(shouldShowArtifactsButton(null)).toBe(true)
-    expect(shouldShowArtifactsButton({})).toBe(true)
+  it('hides the Artifacts entry by default for older settings', () => {
+    expect(shouldShowArtifactsButton(null)).toBe(false)
+    expect(shouldShowArtifactsButton({})).toBe(false)
+    expect(shouldShowArtifactsButton({ showArtifactsButton: true })).toBe(true)
     expect(shouldShowArtifactsButton({ showArtifactsButton: false })).toBe(false)
   })
 
   it('opens Artifacts from the sidebar', async () => {
+    setSidebarState({
+      settings: { ...getDefaultSettings('/tmp'), showArtifactsButton: true }
+    })
     const container = await renderSidebarNav()
 
     await clickButton(getButtonByText(container, 'Artifacts'))
@@ -314,6 +318,9 @@ describe('SidebarNav', () => {
   })
 
   it('hides Artifacts from its context menu', async () => {
+    setSidebarState({
+      settings: { ...getDefaultSettings('/tmp'), showArtifactsButton: true }
+    })
     const container = await renderSidebarNav()
     const row = getButtonByText(container, 'Artifacts')
     const menu = row.closest('[data-testid="context-menu"]')

@@ -14,7 +14,7 @@ const EMPTY_ARTIFACTS: readonly ArtifactListItem[] = []
 
 export function artifactAccountIdentity(authStatus: OrcaProfileAuthStatus | null): string | null {
   return authStatus?.state === 'connected'
-    ? `${authStatus.activeProfileId}:${authStatus.cloud?.userId ?? ''}:${authStatus.cloud?.cloudProfileId ?? ''}`
+    ? `${authStatus.activeProfileId}:${authStatus.cloud?.userId ?? ''}:${authStatus.cloud?.cloudProfileId ?? ''}:${authStatus.cloud?.activeOrgId ?? ''}`
     : null
 }
 
@@ -186,6 +186,10 @@ export function useArtifactPagination(
   }, [accountIdentity, currentPage?.nextCursor, refreshAuth])
 
   const removeArtifact = useCallback((identity: string, slug: string): void => {
+    loadSequence.current += 1
+    loadingCursor.current = null
+    setLoading(false)
+    setLoadingMore(false)
     setArtifactState((current) =>
       current.identity === identity
         ? {

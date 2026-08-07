@@ -20,6 +20,7 @@ import {
   captureArtifactShareLifecycle,
   getArtifactShareRecord,
   isArtifactShareLifecycleCurrent,
+  refreshArtifactShareRecordExpiration,
   removeArtifactShareRecords,
   saveArtifactShareRecord
 } from './artifact-share-record-store'
@@ -80,6 +81,7 @@ function storedSessionAuthContext(
     {
       cloudUserId: active.profile.cloud.userId,
       cloudProfileId: active.profile.cloud.cloudProfileId,
+      cloudOrganizationId: active.profile.cloud.activeOrgId ?? '',
       apiOrigin
     },
     userDataPath,
@@ -103,6 +105,7 @@ function explicitTokenAuthContext(
     {
       cloudUserId: `token:${fingerprint}`,
       cloudProfileId: `token:${fingerprint}`,
+      cloudOrganizationId: `token:${fingerprint}`,
       apiOrigin
     },
     userDataPath
@@ -132,6 +135,7 @@ export class ArtifactCloudService {
         slug: response.artifact.slug,
         editToken: response.editToken,
         shareUrl: response.shareUrl,
+        expiresAt: response.artifact.expiresAt,
         ...auth.scope
       })
       return { artifact: response.artifact, shareUrl: response.shareUrl }
@@ -154,6 +158,15 @@ export class ArtifactCloudService {
         editToken: record.editToken,
         body: writeBody(request)
       })
+      auth.assertCurrent()
+      refreshArtifactShareRecordExpiration(
+        auth.profileId,
+        this.userDataPath,
+        request.sourceKey,
+        auth.scope,
+        record,
+        response.artifact.expiresAt
+      )
       return response
     })
   }

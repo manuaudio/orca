@@ -278,7 +278,7 @@ export function getDefaultSettings(homedir: string): GlobalSettings {
     showTasksButton: true,
     showAutomationsButton: true,
     artifactsEnabled: true,
-    showArtifactsButton: true,
+    showArtifactsButton: false,
     showMobileButton: true,
     showPinnedWorktreesInGroups: false,
     ctrlTabOrderMode: 'mru',

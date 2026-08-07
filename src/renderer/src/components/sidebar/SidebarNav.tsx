@@ -46,7 +46,7 @@ export function shouldShowAutomationsButton(
 export function shouldShowArtifactsButton(
   settings: Pick<GlobalSettings, 'showArtifactsButton'> | null | undefined
 ): boolean {
-  return settings?.showArtifactsButton !== false
+  return settings?.showArtifactsButton === true
 }
 
 const AgentDashboardSidebarEntry = lazyWithRetry(() => import('./AgentDashboardSidebarEntry'))

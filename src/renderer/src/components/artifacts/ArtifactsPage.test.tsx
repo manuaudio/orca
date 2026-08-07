@@ -4,6 +4,7 @@ import '@testing-library/jest-dom/vitest'
 import type { ReactNode } from 'react'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { OrcaProfileAuthStatus } from '../../../../shared/orca-profiles'
 
 const mocks = vi.hoisted(() => ({
   authStatus: {
@@ -60,6 +61,7 @@ function storeState(): Record<string, unknown> {
 }
 
 import ArtifactsPage from './ArtifactsPage'
+import { artifactAccountIdentity } from './useArtifactPagination'
 
 describe('ArtifactsPage', () => {
   beforeEach(() => {
@@ -406,6 +408,54 @@ describe('ArtifactsPage', () => {
     resolveDelete({ status: 'ok', value: undefined })
 
     expect(await screen.findAllByText('Shared slug B')).toHaveLength(2)
+  })
+
+  it('does not resurrect a deletion from an older refresh', async () => {
+    let resolveRefresh!: (value: unknown) => void
+    mocks.confirm.mockResolvedValue(true)
+    mocks.rpc
+      .mockResolvedValueOnce({
+        status: 'ok',
+        value: { artifacts: [artifactListItem('Delete me', 'delete-me')] }
+      })
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          resolveRefresh = resolve
+        })
+      )
+      .mockResolvedValueOnce({ status: 'ok', value: undefined })
+    render(<ArtifactsPage />)
+
+    await screen.findAllByText('Delete me')
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Delete artifact' }))
+    await waitFor(() => expect(screen.queryByText('Delete me')).not.toBeInTheDocument())
+    resolveRefresh({
+      status: 'ok',
+      value: { artifacts: [artifactListItem('Delete me', 'delete-me')] }
+    })
+
+    await waitFor(() => expect(screen.queryByText('Delete me')).not.toBeInTheDocument())
+  })
+
+  it('treats an organization switch as an account identity change', () => {
+    const status = {
+      activeProfileId: 'profile-a',
+      cloud: {
+        activeOrgId: 'org-a',
+        cloudProfileId: 'cloud-a',
+        email: 'a@example.com',
+        linkedAt: 1,
+        userId: 'user-a'
+      },
+      configured: true,
+      persistence: 'encrypted',
+      state: 'connected'
+    } satisfies OrcaProfileAuthStatus
+
+    expect(artifactAccountIdentity(status)).not.toBe(
+      artifactAccountIdentity({ ...status, cloud: { ...status.cloud, activeOrgId: 'org-b' } })
+    )
   })
 })
 

@@ -37,7 +37,7 @@ const cloudB: OrcaProfileCloudSummary = {
   linkedAt: 2
 }
 
-function createResponse(slug = 'artifact-a'): Response {
+function createResponse(slug = 'artifact-a', expiresAt = '2026-09-06T00:00:00.000Z'): Response {
   return new Response(
     JSON.stringify({
       artifact: {
@@ -49,7 +49,7 @@ function createResponse(slug = 'artifact-a'): Response {
         renderedContentType: 'text/html',
         createdAt: '2026-08-06T00:00:00.000Z',
         updatedAt: '2026-08-06T00:00:00.000Z',
-        expiresAt: '2026-09-06T00:00:00.000Z',
+        expiresAt,
         byteSize: 12,
         deletedAt: null
       },
@@ -87,6 +87,7 @@ const writeRequest = {
 }
 
 afterEach(async () => {
+  vi.useRealTimers()
   vi.unstubAllGlobals()
   vi.unstubAllEnvs()
   vi.restoreAllMocks()
@@ -280,6 +281,36 @@ describe('ArtifactCloudService record authorization', () => {
 
     await expect(service.update(writeRequest)).rejects.toThrow(/has not been shared/)
     expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('keeps update and unshare working after an update extends expiration', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime('2026-08-07T00:00:00.000Z')
+    const { service } = await setup()
+    let resolveUpdate: ((response: Response) => void) | undefined
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(createResponse('artifact-a', '2026-09-06T00:00:00.000Z'))
+      .mockImplementationOnce(
+        () =>
+          new Promise<Response>((resolve) => {
+            resolveUpdate = resolve
+          })
+      )
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await service.share(writeRequest)
+    vi.setSystemTime('2026-09-05T00:00:00.000Z')
+    const update = service.update(writeRequest)
+    await vi.waitFor(() => expect(resolveUpdate).toBeTypeOf('function'))
+    vi.setSystemTime('2026-09-07T00:00:00.000Z')
+    resolveUpdate?.(createResponse('artifact-a', '2026-10-06T00:00:00.000Z'))
+    await update
+    await expect(
+      service.unshare({ sourceKey: writeRequest.sourceKey, apiUrl, authToken: 'token-a' })
+    ).resolves.toEqual({ status: 'ok', value: undefined })
+    expect(fetchMock).toHaveBeenCalledTimes(3)
   })
 })
 

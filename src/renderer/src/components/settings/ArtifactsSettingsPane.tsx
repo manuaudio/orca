@@ -22,10 +22,8 @@ export function ArtifactsSettingsPane({
           'auto.components.settings.artifacts.showButtonDescription',
           'Show the Artifacts shortcut in the sidebar.'
         )}
-        checked={settings.showArtifactsButton !== false}
-        onChange={() =>
-          void updateSettings({ showArtifactsButton: settings.showArtifactsButton === false })
-        }
+        checked={settings.showArtifactsButton === true}
+        onChange={() => void updateSettings({ showArtifactsButton: !settings.showArtifactsButton })}
       />
       <section className="space-y-4 py-5">
         <div className="space-y-1">

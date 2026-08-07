@@ -5,6 +5,7 @@ import { moveFocusToRendererBeforeWebviewDetach } from '@/components/browser-pan
 import { translate } from '@/i18n/i18n'
 
 type PreviewState = 'loading' | 'ready' | 'unavailable'
+const ARTIFACT_PREVIEW_LOAD_TIMEOUT_MS = 20_000
 
 function artifactPreviewUrl(shareUrl: string): string {
   const url = new URL(shareUrl)
@@ -25,7 +26,7 @@ function attachArtifactWebview({
   shareUrl: string
   onLoadStarted: () => void
   onLoadStopped: () => void
-  onLoadFailed: () => void
+  onLoadFailed: (event: Electron.DidFailLoadEvent) => void
 }): () => void {
   const webview = document.createElement('webview') as Electron.WebviewTag
   webview.setAttribute('partition', partition)
@@ -61,27 +62,49 @@ export function ArtifactPreview({ shareUrl }: { shareUrl: string }): React.JSX.E
   useEffect(() => {
     let disposed = false
     let detachPreview: (() => void) | undefined
+    let loadTimeout: ReturnType<typeof setTimeout> | undefined
     let loadFailed = false
+    const clearLoadTimeout = (): void => {
+      if (loadTimeout !== undefined) {
+        clearTimeout(loadTimeout)
+        loadTimeout = undefined
+      }
+    }
+    const startLoadTimeout = (): void => {
+      clearLoadTimeout()
+      loadTimeout = setTimeout(() => {
+        loadFailed = true
+        setState('unavailable')
+      }, ARTIFACT_PREVIEW_LOAD_TIMEOUT_MS)
+    }
     const onLoadStarted = (): void => {
       loadFailed = false
       setState('loading')
+      startLoadTimeout()
     }
     const onLoadStopped = (): void => {
+      clearLoadTimeout()
       if (!loadFailed) {
         setState('ready')
       }
     }
-    const onLoadFailed = (): void => {
+    const onLoadFailed = (event: Electron.DidFailLoadEvent): void => {
+      if (!event.isMainFrame || event.errorCode === -3) {
+        return
+      }
+      clearLoadTimeout()
       loadFailed = true
       setState('unavailable')
     }
 
     setState('loading')
+    startLoadTimeout()
     void window.api.browser
       .sessionResolvePartition({ profileId: null })
       .then((partition) => {
         if (disposed || !partition || !containerRef.current) {
           if (!disposed) {
+            clearLoadTimeout()
             setState('unavailable')
           }
           return
@@ -95,15 +118,18 @@ export function ArtifactPreview({ shareUrl }: { shareUrl: string }): React.JSX.E
           onLoadStopped,
           onLoadFailed
         })
+        startLoadTimeout()
       })
       .catch(() => {
         if (!disposed) {
+          clearLoadTimeout()
           setState('unavailable')
         }
       })
 
     return () => {
       disposed = true
+      clearLoadTimeout()
       detachPreview?.()
     }
   }, [shareUrl])
