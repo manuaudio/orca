@@ -449,11 +449,16 @@ function makeRecentTabState(overrides: Partial<AppState> = {}): Partial<AppState
   }
 }
 
-/** One worktree with `count` terminal tabs, so the recent section overflows its cap. */
+/** One tab-heavy worktree plus `count` bare ones, so both sections overflow their caps. */
 function makeManyTabState(count: number): Partial<AppState> {
   const ids = Array.from({ length: count }, (_, index) => `${index}`)
   return {
-    worktreesByRepo: { 'repo-1': [makeWorktree('wt-many', 'Many workspace')] },
+    worktreesByRepo: {
+      'repo-1': [
+        makeWorktree('wt-many', 'Many workspace'),
+        ...ids.map((id) => makeWorktree(`wt-${id}`, `Spare workspace ${id}`))
+      ]
+    },
     showSleepingWorkspaces: true,
     ptyIdsByTabId: Object.fromEntries(ids.map((id) => [`term-${id}`, [`pty-${id}`]])),
     tabsByWorktree: {
@@ -474,7 +479,7 @@ function makeManyTabState(count: number): Partial<AppState> {
   }
 }
 
-function getSectionHeaders(): string[] {
+function getRenderedRowIds(): string[] {
   return [...testContainer.querySelectorAll<HTMLElement>('[data-command-item]')].map(
     (node) => node.dataset.commandItem ?? ''
   )
@@ -508,7 +513,7 @@ describe('WorktreeJumpPalette recent chats & terminals', () => {
   it('leads the empty-query list with the recent section', async () => {
     await renderPalette(makeRecentTabState())
 
-    const rows = getSectionHeaders().filter((id) => id.length > 0)
+    const rows = getRenderedRowIds().filter((id) => id.length > 0)
     expect(rows[0]).toMatch(/^workspace-tab:/)
     expect(rows.some((id) => id.startsWith('worktree:'))).toBe(true)
     expect(testContainer.textContent).toContain('Recent Chats & Terminals')
@@ -520,6 +525,31 @@ describe('WorktreeJumpPalette recent chats & terminals', () => {
 
     expect(getTabRowIds()).toHaveLength(6)
     expect(testContainer.textContent).toContain('Recent Worktrees')
+    // Why: the worktree section shrinks against the recent rows so the list holds at 10 total —
+    // it must never uncap, not even for the frame before the order snapshot lands.
+    expect(getWorktreeRows().length).toBeLessThanOrEqual(4)
+  })
+
+  it('backfills past the cap when rows drop out of the frozen order', async () => {
+    await renderPalette(makeManyTabState(12))
+    const before = getTabRowIds()
+
+    // Why: closing the whole first page stands in for any mid-open narrowing (a filter chip does the
+    // same thing) — the section must fall through to the next ranked rows, not render empty.
+    await act(async () => {
+      useAppStore.setState({
+        unifiedTabsByWorktree: {
+          'wt-many': (useAppStore.getState().unifiedTabsByWorktree['wt-many'] ?? []).filter(
+            (tab) => !before.includes(tab.id)
+          )
+        }
+      } as Partial<AppState>)
+    })
+    await flushEffects()
+
+    const after = getTabRowIds()
+    expect(after).toHaveLength(6)
+    expect(after.some((id) => before.includes(id))).toBe(false)
   })
 
   it('ranks a blocked agent above a more recently visited idle tab', async () => {
@@ -554,6 +584,28 @@ describe('WorktreeJumpPalette recent chats & terminals', () => {
     await flushEffects()
 
     expect(getTabRowIds()).toEqual(['tab-beta', 'tab-alpha'])
+  })
+
+  it('captures the unfiltered order when reopened after a search', async () => {
+    await renderPalette(makeRecentTabState())
+
+    await act(async () => {
+      setCommandQuery?.('Alpha')
+    })
+    await flushEffects()
+
+    // Why closed-then-reopened: the palette stays mounted, and the open effect clears the query one
+    // commit after the snapshot effect — so a naive capture would freeze the Alpha-only subset.
+    await act(async () => {
+      useAppStore.setState({ activeModal: undefined } as Partial<AppState>)
+    })
+    await flushEffects()
+    await act(async () => {
+      useAppStore.setState({ activeModal: 'worktree-palette' } as Partial<AppState>)
+    })
+    await flushEffects()
+
+    expect(getTabRowIds()).toHaveLength(2)
   })
 
   it('excludes the current tab from the recent section', async () => {
@@ -614,6 +666,19 @@ describe('WorktreeJumpPalette recent chats & terminals', () => {
     await flushEffects()
 
     expect(activateWorkspaceTabPaletteResult).not.toHaveBeenCalled()
+  })
+
+  it('keeps create-worktree below the matches it would otherwise outrank', async () => {
+    await renderPalette(makeRecentTabState())
+
+    await act(async () => {
+      setCommandQuery?.('Alpha')
+    })
+    await flushEffects()
+
+    const rows = getRenderedRowIds().filter((id) => id.length > 0)
+    expect(rows.at(-1)).toBe('__create_worktree__')
+    expect(rows.length).toBeGreaterThan(1)
   })
 
   it('labels a folder workspace row with its display name, not a branch', async () => {

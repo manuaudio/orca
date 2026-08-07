@@ -71,7 +71,7 @@ export function resolveRecentWorkspaceTabAttention(
   )
 }
 
-/** Live status dot for a hero row — read per render, unlike the frozen ordering. */
+/** Live status dot for a hero row — re-read on agent churn, unlike the frozen ordering. */
 export function resolveRecentWorkspaceTabStatus(
   row: RecentWorkspaceTabRow,
   paneSources: TabPaneInputSources,

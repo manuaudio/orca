@@ -32,6 +32,9 @@ type WorktreePaletteSelectionCandidateEntry = {
   type: string
 }
 
+// Why every rendered CommandItem type belongs here: an id missing from this list fails the
+// `includes` check in getNextWorktreePaletteSelection, so arrowing onto that row snaps the
+// highlight back to the top — making the whole section mouse-only.
 const SELECTABLE_ENTRY_TYPES = [
   'worktree',
   'create-worktree',
@@ -39,7 +42,8 @@ const SELECTABLE_ENTRY_TYPES = [
   'quick-action',
   'browser-page',
   'workspace-tab',
-  'simulator-tab'
+  'simulator-tab',
+  'project-target'
 ] as const
 
 type WorktreePaletteSelectableEntryType = (typeof SELECTABLE_ENTRY_TYPES)[number]
