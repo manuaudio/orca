@@ -46,9 +46,7 @@ describe('ArtifactsSettingsPane', () => {
     expect(screen.getByText('How to use Artifacts')).toBeInTheDocument()
     expect(screen.getByText('Ask your agent to share it')).toBeInTheDocument()
     expect(
-      screen.getByText(
-        'Your agent uses the Orca CLI for the upload. Just ask: “Share this HTML mock as an artifact.”'
-      )
+      screen.getByText('For example: “Share this HTML mock as an artifact.”')
     ).toBeInTheDocument()
     expect(screen.getByText('Share the public link')).toBeInTheDocument()
     expect(

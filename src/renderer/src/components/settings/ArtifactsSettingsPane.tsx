@@ -55,7 +55,7 @@ export function ArtifactsSettingsPane({
               <p className="text-xs leading-relaxed text-muted-foreground">
                 {translate(
                   'auto.components.settings.artifacts.shareStepDescription',
-                  'Your agent uses the Orca CLI for the upload. Just ask: “Share this HTML mock as an artifact.”'
+                  'For example: “Share this HTML mock as an artifact.”'
                 )}
               </p>
             </div>
