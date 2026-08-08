@@ -24,7 +24,17 @@ export function activateSimulatorTabPaletteResult({
     return { status: 'failed', reason: 'missing-tab' }
   }
 
-  const activated = activateAndRevealWorktree(worktreeId)
+  // Why thread hostId: activateAndRevealWorktree resolves the worktree and stores
+  // activeWorkspaceExecutionHostId from it, so remote-hosted worktrees need it.
+  const worktree = initialState.getKnownWorktreeById(worktreeId)
+  if (!worktree) {
+    return { status: 'failed', reason: 'missing-worktree' }
+  }
+
+  const activated = activateAndRevealWorktree(
+    worktree.id,
+    worktree.hostId ? { executionHostId: worktree.hostId } : {}
+  )
   if (!activated) {
     return { status: 'failed', reason: 'missing-worktree' }
   }

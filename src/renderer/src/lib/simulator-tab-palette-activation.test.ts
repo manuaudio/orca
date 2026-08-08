@@ -95,10 +95,29 @@ describe('activateSimulatorTabPaletteResult', () => {
     })
 
     const state = useAppStore.getState()
-    expect(mocks.activateAndRevealWorktree).toHaveBeenCalledWith('wt-1')
+    expect(mocks.activateAndRevealWorktree).toHaveBeenCalledWith('wt-1', {})
     expect(state.activeTabType).toBe('simulator')
     expect(state.activeGroupIdByWorktree['wt-1']).toBe('group-1')
     expect(state.groupsByWorktree['wt-1'][0].activeTabId).toBe('sim-tab-1')
+  })
+
+  it('threads the execution host of a remote-hosted worktree', () => {
+    seedStore({ worktreesByRepo: { 'repo-1': [makeWorktree({ hostId: 'ssh:host-1' })] } })
+
+    expect(activateSimulatorTabPaletteResult(target).status).toBe('activated')
+    expect(mocks.activateAndRevealWorktree).toHaveBeenCalledWith('wt-1', {
+      executionHostId: 'ssh:host-1'
+    })
+  })
+
+  it('reports an unknown worktree without activating', () => {
+    seedStore({ worktreesByRepo: {} })
+
+    expect(activateSimulatorTabPaletteResult(target)).toEqual({
+      status: 'failed',
+      reason: 'missing-worktree'
+    })
+    expect(mocks.activateAndRevealWorktree).not.toHaveBeenCalled()
   })
 
   it('focuses the owning group when the tab lives in another split column', () => {

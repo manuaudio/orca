@@ -69,17 +69,7 @@ vi.mock('zustand/react/shallow', () => ({
   useShallow: (selector: unknown) => selector
 }))
 
-// Why a proxy over a fixed list: the omnibox reaches sidebar modules through tab
-// activation, so which icons the graph pulls in is not knowable here.
-const stubEveryIcon = vi.hoisted(() => () => {
-  const Icon = (): null => null
-  const isIconKey = (key: string | symbol): boolean => typeof key === 'string' && key !== 'then'
-  return new Proxy({} as Record<string, unknown>, {
-    get: (_target, key) => (isIconKey(key) ? Icon : undefined),
-    has: (_target, key) => isIconKey(key)
-  })
-})
-vi.mock('lucide-react', () => stubEveryIcon())
+vi.mock('lucide-react', async () => (await import('./lucide-icon-stub-fixture')).stubEveryIcon())
 
 vi.mock('@dnd-kit/sortable', () => ({
   SortableContext: function SortableContext(props: { children?: unknown }) {

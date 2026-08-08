@@ -116,8 +116,10 @@ function getMatchedText(result: EngineResult): string | null {
 
 // Why read the path off the entry: the engine overwrites `secondaryText` with
 // whichever string matched, and an absolute-path match leaves no relative path.
+// Why editor-only: diff and review tabs also carry a path, but they are not the
+// same destination as opening the file, so they must not suppress its row.
 function getEditorRelativePath(entry: SearchableWorkspaceTab | undefined): string | null {
-  if (!entry || entry.tab.contentType === 'terminal') {
+  if (!entry || entry.tab.contentType !== 'editor') {
     return null
   }
   return entry.secondaryText || null
