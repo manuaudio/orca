@@ -112,6 +112,7 @@ import {
 } from './source-control-ai-linked-issue'
 import { listMarkdownDocuments, markdownDocumentsFromRelativePaths } from './markdown-documents'
 import { checkRgAvailable } from './rg-availability'
+import { resolveRgCommand } from './bundled-ripgrep'
 import {
   absorbPendingRipgrepSpawnError,
   isRipgrepUnavailableExit,
@@ -992,6 +993,8 @@ export function registerFilesystemHandlers(
         return searchWithGitGrep(rootPath, args, maxResults, localGitOptions)
       }
 
+      const rgCommand = resolveRgCommand({ cwd: rootPath, wslDistro: localGitOptions.wslDistro })
+
       return new Promise<SearchResult>((resolvePromise) => {
         const rgArgs = buildRgArgs(args.query, rootPath, args)
 
@@ -1046,7 +1049,7 @@ export function registerFilesystemHandlers(
           }
         }
 
-        const nextChild = wslAwareSpawn('rg', rgArgs, {
+        const nextChild = wslAwareSpawn(rgCommand, rgArgs, {
           cwd: rootPath,
           ...(localGitOptions.wslDistro ? { wslDistro: localGitOptions.wslDistro } : {}),
           stdio: ['ignore', 'pipe', 'pipe']
