@@ -1820,14 +1820,16 @@ async function purgeOrphanedRuntimeSshProjects(
     }
   }
   // A repo whose only host was the destroyed runtime can outlive its setup (pruned first by a projection refresh); remove it directly so no dead project lingers.
-  const orphanedRepoIds = get()
+  // Why: keep each row's own host — purging by bare id can resolve to a live row on another
+  // host when the id is duplicated across hosts (#13071).
+  const orphanedRepos = get()
     .repos.filter(
       (repo) => destroyedTargetIds.has(repo.connectionId ?? '') && !purgedRepoIds.has(repo.id)
     )
-    .map((repo) => repo.id)
-  for (const repoId of orphanedRepoIds) {
+    .map((repo) => ({ id: repo.id, hostId: getRepoExecutionHostId(repo) }))
+  for (const orphaned of orphanedRepos) {
     try {
-      await get().removeProject(repoId)
+      await get().removeProject(orphaned.id, { hostId: orphaned.hostId })
     } catch (error) {
       console.error('Failed to purge orphaned per-workspace-env repo:', error)
     }

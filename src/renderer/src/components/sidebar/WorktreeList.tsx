@@ -6158,6 +6158,8 @@ const WorktreeList = React.memo(function WorktreeList({
     (repo: Repo) => {
       openModal('confirm-remove-folder', {
         repoId: repo.id,
+        // Why: carry the row's own host so removal cannot resolve to another host's row (#13071).
+        hostId: getRepoExecutionHostId(repo),
         displayName: repo.displayName
       })
     },
