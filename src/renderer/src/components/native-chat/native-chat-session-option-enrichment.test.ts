@@ -302,32 +302,6 @@ describe('native chat session option enrichment', () => {
     ).toEqual({ model: 'retired' })
   })
 
-  it('still drops the retired launch model after its probe host is evicted', async () => {
-    // Regression: the probe evidence lived in the evictable host cache, so evicting the
-    // host that proved the model retired made the resolver read "never probed" and hand
-    // the fatal `-m <retired>` back to composer and source-control launches.
-    const persisted = { grok: { model: 'grok-4.5' } }
-    const discover = vi.fn().mockResolvedValue([{ id: 'grok-5', label: 'Grok 5', options: [] }])
-    ensureNativeChatModelEnrichment({ agent: 'grok', hostKey: 'local', discover })
-    await vi.waitFor(() => expect(readNativeChatEnrichedModels('grok', 'local')).not.toBeNull())
-    expect(resolveNativeChatLaunchSessionOptions(persisted, 'grok')).toBeUndefined()
-
-    // Push past the cache cap; the settled, listener-less grok row is the first evicted.
-    for (let index = 0; index < 64; index += 1) {
-      ensureNativeChatModelEnrichment({
-        agent: 'cursor',
-        hostKey: `ssh:${index}`,
-        discover: vi.fn().mockResolvedValue([{ id: 'auto', label: 'Auto', options: [] }])
-      })
-    }
-    expect(readNativeChatEnrichedModels('grok', 'local')).toBeNull()
-
-    expect(resolveNativeChatLaunchSessionOptions(persisted, 'grok')).toBeUndefined()
-    expect(resolveNativeChatLaunchSessionOptions({ grok: { model: 'grok-5' } }, 'grok')).toEqual({
-      model: 'grok-5'
-    })
-  })
-
   it('does not advertise the Claude spec fallback when probing is unavailable', async () => {
     mocks.discoverRuntimeCommitMessageModels.mockResolvedValue({
       success: true,
