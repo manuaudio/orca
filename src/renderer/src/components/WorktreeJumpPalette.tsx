@@ -479,6 +479,7 @@ export default function WorktreeJumpPalette(): React.JSX.Element | null {
   const [query, setQuery] = useState('')
   const deferredQuery = useDeferredValue(query)
   const [selectedItemId, setSelectedItemId] = useState('')
+  const latestQueryRef = useRef('')
   // Why: the id cmdk auto-selected for the last committed list, so a late recent-order snapshot can
   // tell "nobody has moved the highlight yet" from "the user arrowed somewhere deliberately".
   const autoSelectedItemIdRef = useRef<string | null>(null)
@@ -1550,6 +1551,7 @@ export default function WorktreeJumpPalette(): React.JSX.Element | null {
           ? document.activeElement
           : null
       skipRestoreFocusRef.current = false
+      latestQueryRef.current = ''
       setQuery('')
       setSelectedItemId('')
       // Why: reset on open, not on close — closing races the fade-out, and a
@@ -1586,6 +1588,17 @@ export default function WorktreeJumpPalette(): React.JSX.Element | null {
     showCreateAction
   })
 
+  const handleCommandSelectionChange = useCallback(
+    (nextItemId: string) => {
+      // Why: cmdk can report the old list head before the deferred query commits its new ranking.
+      if (latestQueryRef.current !== deferredQuery) {
+        return
+      }
+      setSelectedItemId(nextItemId)
+    },
+    [deferredQuery]
+  )
+
   useEffect(() => {
     const isCreateWorkspaceHighlighted =
       commandSelectedItemId === CREATE_WORKTREE_ITEM_ID ||
@@ -1598,6 +1611,7 @@ export default function WorktreeJumpPalette(): React.JSX.Element | null {
   }, [commandSelectedItemId, prefetchCreateWorkspaceBaseForComposer, visible])
 
   const handleQueryChange = useCallback((nextQuery: string) => {
+    latestQueryRef.current = nextQuery
     setQuery(nextQuery)
     setSelectedItemId('')
     listRef.current?.scrollTo(0, 0)
@@ -2151,7 +2165,7 @@ export default function WorktreeJumpPalette(): React.JSX.Element | null {
       commandProps={{
         loop: true,
         value: commandSelectedItemId,
-        onValueChange: setSelectedItemId,
+        onValueChange: handleCommandSelectionChange,
         className: 'bg-transparent'
       }}
     >
