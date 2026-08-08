@@ -1766,6 +1766,13 @@ export async function importCookiesFromBrowser(
     if (decryptedCookies.length === 0) {
       closeStagingDb()
       discardStagingFile()
+      // Why: an all-app-bound profile decrypts nothing, so it returns here — before the warning
+      // block below. Without this the very case #13192 reports still reads as a clean zero.
+      if (appBoundEncrypted > 0) {
+        diag(
+          `  ${appBoundEncrypted} cookies use app-bound encryption (v20) and cannot be decrypted`
+        )
+      }
       return {
         ok: true,
         profileId: '',
@@ -1774,7 +1781,15 @@ export async function importCookiesFromBrowser(
           importedCookies: 0,
           skippedCookies: skipped + integritySkipped + nonTransplantableSkipped,
           ...(googleCookiesSkipped > 0 ? { googleCookiesSkipped } : {}),
-          domains: []
+          domains: [],
+          ...(appBoundEncrypted > 0
+            ? {
+                warning: {
+                  code: 'app-bound-encryption' as const,
+                  encryptedCookies: appBoundEncrypted
+                }
+              }
+            : {})
         }
       }
     }
