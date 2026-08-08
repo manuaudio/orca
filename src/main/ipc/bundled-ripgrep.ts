@@ -8,12 +8,14 @@ const requireFromMain = createRequire(__filename)
 /** PATH lookup — the pre-bundling behavior, still correct for WSL and remote hosts. */
 const PATH_RG = 'rg'
 
+/** Redirect an in-archive path to its `asarUnpack` copy, which is the one that can be exec'd. */
 function toUnpackedAsarPath(candidate: string): string {
   return candidate
     .replace(/app\.asar([/\\])/, 'app.asar.unpacked$1')
     .replace(/node_modules\.asar([/\\])/, 'node_modules.asar.unpacked$1')
 }
 
+/** Where the bundled binary may live, packaged layout first; empty when no prebuilt ships. */
 function bundledRgCandidates(): string[] {
   const platformPackage = `ripgrep-${process.platform}-${process.arch}`
   const binaryName = process.platform === 'win32' ? 'rg.exe' : 'rg'
