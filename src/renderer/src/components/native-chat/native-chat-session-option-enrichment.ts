@@ -12,13 +12,17 @@ import type {
 } from '../../../../shared/native-chat-session-options'
 
 type CatalogEnrichmentEntry = {
-  agent: AgentType
   state: 'idle' | 'pending' | 'settled'
   models: CatalogModel[] | null
   listeners: Set<(models: CatalogModel[]) => void>
 }
 
 const enrichmentByAgentHost = new Map<string, CatalogEnrichmentEntry>()
+
+// Why separate from the evictable cache above: this is launch-validation evidence, and
+// evicting the host rows that prove a persisted model retired would silently re-authorize
+// the fatal `-m`. Keyed by agent, not host, so it stays bounded as host keys grow.
+const probedAuthoritativeModelIdsByAgent = new Map<AgentType, Set<string>>()
 
 // Host keys are unbounded (one per SSH host), so cap the process-lifetime cache.
 // An evicted host simply re-probes on its next visit; live listeners are kept.
@@ -55,7 +59,6 @@ export function subscribeNativeChatEnrichedModels(
 ): () => void {
   const key = enrichmentKey(agent, hostKey)
   const entry = enrichmentByAgentHost.get(key) ?? {
-    agent,
     state: 'idle' as const,
     models: null,
     listeners: new Set<(models: CatalogModel[]) => void>()
@@ -65,15 +68,7 @@ export function subscribeNativeChatEnrichedModels(
   return () => entry.listeners.delete(listener)
 }
 
-/**
- * Why: every launch site turns the persisted model into a verbatim `-m` flag,
- * fatal for an authoritative-catalog agent once the id retires. Settings
- * retirement is asynchronous and only runs after a chat pane mounts, so a
- * launch must not trust a persisted id no settled probe still lists. The id
- * must be missing from *every* probed host — hosts can see different models,
- * and launching without `-m` is safe while dropping a valid pick is not.
- * With no probe data at all the pick is honored: only discovery proves staleness.
- */
+// Why: drop a persisted `-m` only when every settled host probe omits it; no probe yet → keep it.
 export function resolveNativeChatLaunchSessionOptions(
   persisted: PersistedNativeChatSessionOptions | null | undefined,
   agent: AgentType
@@ -82,16 +77,11 @@ export function resolveNativeChatLaunchSessionOptions(
   if (!values || !getAgentSessionOptionCatalog(agent)?.discoveredModelsAreAuthoritative) {
     return values
   }
-  let probed = false
-  for (const entry of enrichmentByAgentHost.values()) {
-    if (entry.agent === agent && entry.models) {
-      probed = true
-      if (entry.models.some((model) => model.id === values.model)) {
-        return values
-      }
-    }
+  const probedModelIds = probedAuthoritativeModelIdsByAgent.get(agent)
+  if (!probedModelIds) {
+    return values
   }
-  return probed ? undefined : values
+  return probedModelIds.has(String(values.model)) ? values : undefined
 }
 
 export function ensureNativeChatModelEnrichment(args: {
@@ -109,7 +99,6 @@ export function ensureNativeChatModelEnrichment(args: {
     return
   }
   const entry: CatalogEnrichmentEntry = existing ?? {
-    agent: args.agent,
     state: 'idle',
     models: null,
     listeners: new Set()
@@ -135,6 +124,14 @@ export function ensureNativeChatModelEnrichment(args: {
           : catalog.discoveredModelsAreAuthoritative
             ? mergeDiscoveredAuthoritativeModels(catalog.models, discovered)
             : mergeCatalogModels(catalog.models, discovered)
+      if (catalog.discoveredModelsAreAuthoritative) {
+        const probedModelIds =
+          probedAuthoritativeModelIdsByAgent.get(args.agent) ?? new Set<string>()
+        for (const model of entry.models) {
+          probedModelIds.add(model.id)
+        }
+        probedAuthoritativeModelIdsByAgent.set(args.agent, probedModelIds)
+      }
       for (const listener of entry.listeners) {
         listener([...entry.models])
       }
@@ -146,4 +143,5 @@ export function ensureNativeChatModelEnrichment(args: {
 
 export function clearNativeChatModelEnrichmentForTests(): void {
   enrichmentByAgentHost.clear()
+  probedAuthoritativeModelIdsByAgent.clear()
 }
