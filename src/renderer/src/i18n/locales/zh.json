@@ -239,8 +239,14 @@
           "34a03a6565": "保持 {{value0}} 为最新状态",
           "fa9299a66f": "您的新工作树是最新的，但本地 {{value0}} 落后于 {{value1}} {{value2}} 。 AI 差异可能会错过最近的 commits。",
           "14bc053a47": "本地 {{value0}} 未刷新",
+          "localBaseRefRefreshFailedForWorktree": "“{{value1}}”的本地 {{value0}} 未刷新",
           "4a18052018": "本地 {{value0}} 落后于 {{value1}}",
-          "903b51c2ed": "从 {{value0}} 创建工作区，但 Orca 无法快进本地 {{value1}}，因为 {{value2}}",
+          "903b51c2ed": "从 {{value0}} 创建工作区，但 Orca 无法快进本地 {{value1}}。{{value2}}",
+          "localBaseRefRefreshFailedDescriptionNamed": "工作区“{{value0}}”从 {{value1}} 创建，但 Orca 无法快进本地 {{value2}}。{{value3}}",
+          "localBaseRefRefreshFailedDetailDirtyNamed": "{{value0}} 处的工作树（本地 {{value1}} 的检出位置）有未提交的更改。请提交、暂存或丢弃这些更改，然后手动更新本地 {{value1}}。",
+          "localBaseRefRefreshFailedDetailDirty": "检出本地 {{value0}} 的工作树有未提交的更改。请提交、暂存或丢弃这些更改，然后手动更新本地 {{value0}}。",
+          "localBaseRefRefreshFailedDetailNotFastForward": "本地 {{value0}} 不存在，或无法从远程基线干净快进。手动更新前请检查是否有仅存在于本地的提交。",
+          "localBaseRefRefreshFailedDetailError": "更新本地 {{value0}} 时 Git 返回错误。请检查仓库是否有锁定的 refs 或异常工作树状态，然后手动更新本地 {{value0}}。",
           "0216895fb5": "删除分支失败",
           "19db0085fb": "本地分支已删除",
           "2b0afc7f14": "无法使本地 {{value0}} 保持最新",
@@ -1976,8 +1982,6 @@
         "556e7232ca": "当前",
         "684e8d7bc2": "收集您最近的工作树和打开的选项卡。",
         "ff908adfe9": "加载跳跃目标",
-        "1ebe225fee": "搜索工作树、设置、选项卡和操作...",
-        "4e4ff044d5": "搜索工作树、设置、选项卡和操作",
         "4ee378034d": "跳转到...",
         "f7fda8d562": "在 Orca 中创建工作树或打开选项卡即可开始。",
         "1628fd7dfa": "没有活动的工作树、设置、操作或打开的选项卡",
@@ -2005,7 +2009,10 @@
         "projectsGroupsHeader": "项目和分组",
         "projectBadge": "项目",
         "repoGroupBadge": "仓库组",
-        "pluginCommandFailed": "无法运行插件命令。"
+        "pluginCommandFailed": "无法运行插件命令。",
+        "27f10cca63": "搜索聊天、终端、工作树、设置和操作...",
+        "2770f02910": "搜索聊天、终端、工作树、设置和操作",
+        "recentChatsTerminalsHeader": "最近的聊天和终端"
       },
       "github": {
         "pr": {
@@ -11182,7 +11189,9 @@
             "openSupportedWorkspace": "在恢复会话之前，请先打开一个工作区。",
             "localSessionSshWorkspaceUnsupported": "此会话的历史记录存储在本机上，因此无法在 SSH 工作区中恢复。请改为打开一个本地工作区。",
             "sessionHostMismatchUnsupported": "此会话属于其他主机。请打开同一主机上的工作区以恢复它。",
-            "prepareSessionResumeFailed": "无法为恢复准备此会话。"
+            "prepareSessionResumeFailed": "无法为恢复准备此会话。",
+            "sessionDeleted": "会话已删除",
+            "sessionDeleteFailed": "无法删除会话"
           },
           "AiVaultPanelControls": {
             "scanningSessions": "正在扫描会话",
@@ -11314,7 +11323,17 @@
             "jumpToWorktree": "跳转到工作树",
             "recoverableBadge": "未保存",
             "subagentCountSingular": "1 个子智能体",
-            "subagentCountPlural": "{{value0}} 个子智能体"
+            "subagentCountPlural": "{{value0}} 个子智能体",
+            "delete": "删除",
+            "deleteReasonNonLocalHost": "只能删除此设备上的会话。",
+            "deleteReasonSyntheticPath": "此会话无法在 Orca 中删除。",
+            "deleteReasonUnsupportedAgent": "{{value0}} 会话无法在 Orca 中删除。",
+            "deleteReasonSessionLive": "此会话仍在运行 — 请等待其完成后再删除。"
+          },
+          "AiVaultSessionDeleteDialog": {
+            "title": "要删除此会话吗？",
+            "description": "“{{value0}}”将被删除。删除后，也将无法通过 {{value1}} 自身的命令行恢复。",
+            "confirm": "删除"
           },
           "FileExplorerNameFilter": {
             "26fb73c6e3": "查找文件",

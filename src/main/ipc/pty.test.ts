@@ -65,7 +65,8 @@ const {
   clearMigrationUnsupportedPtysForPaneKeyMock,
   clearPaneKeyAliasesForPtyMock,
   recordCodexPaneAccountMock,
-  forgetCodexPaneAccountMock
+  forgetCodexPaneAccountMock,
+  ensureCodexBackfillRecoveryMock
 } = vi.hoisted(() => ({
   handleMock: vi.fn(),
   onMock: vi.fn(),
@@ -99,7 +100,8 @@ const {
   clearMigrationUnsupportedPtysForPaneKeyMock: vi.fn(),
   clearPaneKeyAliasesForPtyMock: vi.fn(),
   recordCodexPaneAccountMock: vi.fn(),
-  forgetCodexPaneAccountMock: vi.fn()
+  forgetCodexPaneAccountMock: vi.fn(),
+  ensureCodexBackfillRecoveryMock: vi.fn(() => Promise.resolve())
 }))
 
 vi.mock('electron', () => ({
@@ -208,6 +210,10 @@ vi.mock('../agent-hooks/migration-unsupported-pty-state', () => ({
 vi.mock('../codex/codex-pane-account-registry', () => ({
   recordCodexPaneAccount: recordCodexPaneAccountMock,
   forgetCodexPaneAccount: forgetCodexPaneAccountMock
+}))
+
+vi.mock('../codex/codex-state-db-backfill-recovery', () => ({
+  ensureCodexStateDbBackfillRecoveryStarted: ensureCodexBackfillRecoveryMock
 }))
 import {
   LocalPtyProvider,
@@ -383,6 +389,8 @@ describe('registerPtyHandlers', () => {
     clearPaneKeyAliasesForPtyMock.mockReset()
     recordCodexPaneAccountMock.mockReset()
     forgetCodexPaneAccountMock.mockReset()
+    ensureCodexBackfillRecoveryMock.mockReset()
+    ensureCodexBackfillRecoveryMock.mockResolvedValue(undefined)
     mainWindow.webContents.on.mockReset()
     mainWindow.webContents.send.mockReset()
     mainWindow.webContents.removeListener.mockReset()
@@ -3060,6 +3068,54 @@ describe('registerPtyHandlers', () => {
       })
     })
 
+    it('arbitrates the exact backfill owner before spawning Codex', async () => {
+      let releaseRecovery!: () => void
+      ensureCodexBackfillRecoveryMock.mockReturnValue(
+        new Promise<void>((resolve) => (releaseRecovery = resolve))
+      )
+      readFileSyncMock.mockReturnValue(TEST_CODEX_AUTH_JSON)
+      const onCodexHomePtySpawned = vi.fn()
+      handlers.clear()
+      registerPtyHandlers(
+        mainWindow as never,
+        undefined,
+        () => TEST_CODEX_HOME,
+        (() => ({
+          codexManagedAccounts: [
+            {
+              id: 'account-1',
+              managedHomePath: TEST_CODEX_HOME,
+              managedHomeRuntime: 'host'
+            }
+          ]
+        })) as never,
+        undefined,
+        undefined,
+        { onCodexHomePtySpawned }
+      )
+
+      const spawnPromise = handlers.get('pty:spawn')!(null, {
+        cols: 80,
+        rows: 24,
+        launchAgent: 'codex'
+      })
+      await vi.waitFor(() =>
+        expect(ensureCodexBackfillRecoveryMock).toHaveBeenCalledWith(TEST_CODEX_HOME)
+      )
+      expect(spawnMock).not.toHaveBeenCalled()
+      expect(onCodexHomePtySpawned).not.toHaveBeenCalled()
+
+      releaseRecovery()
+      const result = (await spawnPromise) as { id: string }
+      expect(spawnMock).toHaveBeenCalledTimes(1)
+      expect(onCodexHomePtySpawned).toHaveBeenCalledWith({
+        id: result.id,
+        codexHomePath: TEST_CODEX_HOME,
+        startedAt: expect.any(Date),
+        startedSequence: expect.any(Number)
+      })
+    })
+
     it('does not gate a bare local shell on managed Codex auth', async () => {
       readFileSyncMock.mockImplementation((filePath: string) => {
         if (filePath.endsWith('auth.json')) {
@@ -3068,19 +3124,37 @@ describe('registerPtyHandlers', () => {
         return ''
       })
       handlers.clear()
-      registerPtyHandlers(mainWindow as never, undefined, () => TEST_CODEX_HOME, (() => ({
-        codexManagedAccounts: [
-          {
-            id: 'account-1',
-            managedHomePath: TEST_CODEX_HOME,
-            managedHomeRuntime: 'host'
-          }
-        ]
-      })) as never)
+      const onCodexHomePtySpawned = vi.fn()
+      registerPtyHandlers(
+        mainWindow as never,
+        undefined,
+        () => TEST_CODEX_HOME,
+        (() => ({
+          codexManagedAccounts: [
+            {
+              id: 'account-1',
+              managedHomePath: TEST_CODEX_HOME,
+              managedHomeRuntime: 'host'
+            }
+          ]
+        })) as never,
+        undefined,
+        undefined,
+        { onCodexHomePtySpawned }
+      )
 
-      await handlers.get('pty:spawn')!(null, { cols: 80, rows: 24 })
+      const result = (await handlers.get('pty:spawn')!(null, {
+        cols: 80,
+        rows: 24
+      })) as { id: string }
 
       expect(spawnMock).toHaveBeenCalledOnce()
+      expect(onCodexHomePtySpawned).toHaveBeenCalledWith({
+        id: result.id,
+        codexHomePath: TEST_CODEX_HOME,
+        startedAt: expect.any(Date),
+        startedSequence: expect.any(Number)
+      })
     })
 
     it('leaves an inherited CODEX_HOME untouched for system default when the flag is OFF', async () => {
@@ -8843,6 +8917,7 @@ describe('registerPtyHandlers', () => {
       const prepareClaudeAuth = vi.fn(() => {
         throw new Error('replacement auth preflight must not run')
       })
+      const onCodexHomePtySpawned = vi.fn()
       let controller: RuntimeSpawnController | null = null
       const runtime = {
         setPtyController: vi.fn((value) => {
@@ -8880,7 +8955,8 @@ describe('registerPtyHandlers', () => {
         undefined,
         undefined,
         prepareClaudeAuth,
-        store as never
+        store as never,
+        { onCodexHomePtySpawned }
       )
       const spawnController = controller as unknown as RuntimeSpawnController
       await spawnController.spawn({
@@ -8974,6 +9050,7 @@ describe('registerPtyHandlers', () => {
         rows: 40,
         cwd,
         command: 'codex resume should-not-run',
+        launchAgent: 'codex',
         worktreeId,
         preAllocatedHandle: 'term-live-owner',
         tabId,
@@ -8998,6 +9075,13 @@ describe('registerPtyHandlers', () => {
         id: 'pty-live-owner',
         incarnationId: 'inc-live-owner',
         isReattach: true
+      })
+      expect(onCodexHomePtySpawned).toHaveBeenCalledWith({
+        id: 'pty-live-owner',
+        codexHomePath: null,
+        reattached: true,
+        startedAt: expect.any(Date),
+        startedSequence: expect.any(Number)
       })
       expect(claimedResult).toMatchObject({
         id: 'pty-live-owner',
