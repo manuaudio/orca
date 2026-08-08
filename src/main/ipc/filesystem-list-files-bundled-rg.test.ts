@@ -53,8 +53,8 @@ describe('Quick Open with the bundled ripgrep', () => {
     await execFile('git', ['init', '-q', repoPath])
     await writeFile(join(repoPath, 'tracked.ts'), 'export const a = 1')
     await execFile('git', ['add', 'tracked.ts'], { cwd: repoPath })
-    // Why: deliberately left unstaged, so git ls-files would miss it — its presence proves the
-    // listing came from rg, while tracked.ts keeps the tracked case covered too.
+    // Why: untracked.ts is never staged, so a git ls-files listing would omit it — its presence
+    // proves the result came from rg, while the staged tracked.ts covers the tracked case.
     await writeFile(join(repoPath, 'untracked.ts'), 'export const b = 2')
 
     const result = await listQuickOpenFiles(repoPath, makeStore(repoPath))
