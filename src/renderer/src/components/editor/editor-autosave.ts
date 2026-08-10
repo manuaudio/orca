@@ -5,6 +5,7 @@ import {
   MAX_EDITOR_AUTO_SAVE_DELAY_MS,
   MIN_EDITOR_AUTO_SAVE_DELAY_MS
 } from '../../../../shared/constants'
+import { normalizeRuntimePathForComparison } from '../../../../shared/cross-platform-path'
 import { clampNumber } from '@/lib/terminal-theme'
 
 export const ORCA_EDITOR_QUIESCE_FILE_SAVES_EVENT = 'orca:editor-quiesce-file-saves'
@@ -121,6 +122,13 @@ export function getOpenFilesForExternalFileChange(
   target: EditorPathMutationTarget
 ): OpenFile[] {
   const absolutePath = joinPath(target.worktreePath, target.relativePath)
+  // Why: the same file reaches `filePath` in two spellings — terminal links open
+  // the forward-slash UNC form (`//wsl.localhost/Distro/...`) while the Files
+  // sidebar stores the backslash form `joinPath` rebuilds here, so raw equality
+  // left the terminal-opened tab out of the reload set forever (#13349).
+  // Normalized once here, not per candidate: the comparison key is deliberately
+  // not idempotent for WSL UNC, so both sides must fold exactly one raw value.
+  const normalizedAbsolutePath = normalizeRuntimePathForComparison(absolutePath)
   const hasRuntimeOwnerFilter = Object.prototype.hasOwnProperty.call(target, 'runtimeEnvironmentId')
   const targetRuntimeOwner = target.runtimeEnvironmentId?.trim() || null
   return openFiles.filter((file) => {
@@ -134,7 +142,11 @@ export function getOpenFilesForExternalFileChange(
       return false
     }
     if (file.mode === 'edit' || file.mode === 'markdown-preview') {
-      return file.filePath === absolutePath
+      // Why: exact match first so the common case never pays for normalization.
+      return (
+        file.filePath === absolutePath ||
+        normalizeRuntimePathForComparison(file.filePath) === normalizedAbsolutePath
+      )
     }
     if (file.mode === 'diff') {
       return (
